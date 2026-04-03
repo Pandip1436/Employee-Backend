@@ -5,6 +5,9 @@ import projectRoutes from "./projectRoutes";
 import timesheetRoutes from "./timesheetRoutes";
 import timerRoutes from "./timerRoutes";
 import reportRoutes from "./reportRoutes";
+import attendanceRoutes from "./attendanceRoutes";
+import leaveRoutes from "./leaveRoutes";
+import documentRoutes from "./documentRoutes";
 
 const router = Router();
 
@@ -14,5 +17,8 @@ router.use("/projects", projectRoutes);
 router.use("/timesheets", timesheetRoutes);
 router.use("/timers", timerRoutes);
 router.use("/reports", reportRoutes);
+router.use("/attendance", attendanceRoutes);
+router.use("/leaves", leaveRoutes);
+router.use("/documents", documentRoutes);
 
 export default router;

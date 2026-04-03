@@ -49,4 +49,27 @@ export class AuthController {
       data: req.user,
     });
   }
+
+  static async updateProfile(
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const user = await AuthService.updateProfile(req.user!._id.toString(), req.body);
+      res.status(200).json({ success: true, message: "Profile updated.", data: user });
+    } catch (error) { next(error); }
+  }
+
+  static async changePassword(
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const { currentPassword, newPassword } = req.body;
+      await AuthService.changePassword(req.user!._id.toString(), currentPassword, newPassword);
+      res.status(200).json({ success: true, message: "Password changed successfully." });
+    } catch (error) { next(error); }
+  }
 }

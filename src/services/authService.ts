@@ -28,6 +28,34 @@ export class AuthService {
     return { user, token };
   }
 
+  static async updateProfile(
+    userId: string,
+    data: { name?: string; email?: string; department?: string }
+  ): Promise<IUser> {
+    if (data.email) {
+      const existing = await User.findOne({ email: data.email, _id: { $ne: userId } });
+      if (existing) throw new ApiError(409, "Email already in use.");
+    }
+    const user = await User.findByIdAndUpdate(userId, data, { new: true, runValidators: true });
+    if (!user) throw new ApiError(404, "User not found.");
+    return user;
+  }
+
+  static async changePassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string
+  ): Promise<void> {
+    const user = await User.findById(userId).select("+password");
+    if (!user) throw new ApiError(404, "User not found.");
+
+    const isMatch = await user.comparePassword(currentPassword);
+    if (!isMatch) throw new ApiError(401, "Current password is incorrect.");
+
+    user.password = newPassword;
+    await user.save();
+  }
+
   static async login(
     email: string,
     password: string
