@@ -9,6 +9,9 @@ import attendanceRoutes from "./attendanceRoutes";
 import leaveRoutes from "./leaveRoutes";
 import documentRoutes from "./documentRoutes";
 import employeeProfileRoutes from "./employeeProfileRoutes";
+import holidayRoutes from "./holidayRoutes";
+import wfhRoutes from "./wfhRoutes";
+import compOffRoutes from "./compOffRoutes";
 
 const router = Router();
 
@@ -22,5 +25,8 @@ router.use("/attendance", attendanceRoutes);
 router.use("/leaves", leaveRoutes);
 router.use("/documents", documentRoutes);
 router.use("/employee-profile", employeeProfileRoutes);
+router.use("/holidays", holidayRoutes);
+router.use("/wfh", wfhRoutes);
+router.use("/compoff", compOffRoutes);
 
 export default router;
