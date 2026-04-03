@@ -1,4 +1,4 @@
-import Attendance from "../models/Attendance";
+import Attendance, { IAttendance } from "../models/Attendance";
 import { ApiError } from "../utils/ApiError";
 import { parsePagination } from "../utils/helpers";
 
@@ -6,6 +6,13 @@ export class AttendanceService {
   private static getToday(): Date {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  }
+
+  private static getOfficeStart(today: Date): Date {
+    const [h, m] = (process.env.OFFICE_START_TIME || "09:15").split(":").map(Number);
+    const officeStart = new Date(today);
+    officeStart.setHours(h, m, 0, 0);
+    return officeStart;
   }
 
   static async clockIn(userId: string, notes?: string) {
@@ -17,25 +24,28 @@ export class AttendanceService {
     }
 
     const now = new Date();
-    const nineAm = new Date(today);
-    nineAm.setHours(9, 15, 0, 0);
-    const status = now > nineAm ? "late" : "present";
+    const officeStart = this.getOfficeStart(today);
+    const isLate = now > officeStart;
+    const status = isLate ? "late" : "present";
+
+    // Calculate late duration in minutes
+    let lateByMinutes = 0;
+    if (isLate) {
+      lateByMinutes = Math.round((now.getTime() - officeStart.getTime()) / 60000);
+    }
+
+    const record = existing
+      ? existing
+      : await Attendance.create({ userId, date: today, clockIn: now, status, notes });
 
     if (existing) {
       existing.clockIn = now;
       existing.status = status;
       if (notes) existing.notes = notes;
       await existing.save();
-      return existing;
     }
 
-    return Attendance.create({
-      userId,
-      date: today,
-      clockIn: now,
-      status,
-      notes,
-    });
+    return { ...record.toObject(), isLate, lateByMinutes };
   }
 
   static async clockOut(userId: string, notes?: string) {
@@ -99,6 +109,59 @@ export class AttendanceService {
     };
   }
 
+  static async getTodayLiveStatus() {
+    const today = this.getToday();
+
+    // All attendance records for today
+    const records = await Attendance.find({ date: today })
+      .populate("userId", "name email department role")
+      .lean();
+
+    // All active users
+    const User = (await import("../models/User")).default;
+    const allUsers = await User.find({ isActive: true }).select("name email department role").lean();
+
+    const clockedInMap = new Map(
+      records.map((r) => [(r.userId as any)._id.toString(), r])
+    );
+
+    const employees = allUsers.map((u) => {
+      const record = clockedInMap.get(u._id.toString());
+      let liveStatus: "clocked-in" | "clocked-out" | "not-marked" | "late" = "not-marked";
+
+      if (record) {
+        if (record.clockIn && !record.clockOut) {
+          liveStatus = record.status === "late" ? "late" : "clocked-in";
+        } else if (record.clockOut) {
+          liveStatus = "clocked-out";
+        }
+      }
+
+      return {
+        _id: u._id,
+        name: u.name,
+        email: u.email,
+        department: u.department,
+        role: u.role,
+        liveStatus,
+        clockIn: record?.clockIn || null,
+        clockOut: record?.clockOut || null,
+        totalHours: record?.totalHours || null,
+        status: record?.status || null,
+      };
+    });
+
+    const summary = {
+      total: allUsers.length,
+      clockedIn: employees.filter((e) => e.liveStatus === "clocked-in").length,
+      late: employees.filter((e) => e.liveStatus === "late").length,
+      clockedOut: employees.filter((e) => e.liveStatus === "clocked-out").length,
+      notMarked: employees.filter((e) => e.liveStatus === "not-marked").length,
+    };
+
+    return { summary, employees };
+  }
+
   static async getMyHistory(
     userId: string,
     query: { page?: number; limit?: number; month?: string }
@@ -122,6 +185,70 @@ export class AttendanceService {
     return {
       data,
       pagination: { total, page, limit, pages: Math.ceil(total / limit) },
+    };
+  }
+
+  static async getMonthlyReport(month: string, userId?: string) {
+    const [year, m] = month.split("-").map(Number);
+    const startDate = new Date(year, m - 1, 1);
+    const endDate = new Date(year, m, 0); // last day of month
+
+    const filter: Record<string, unknown> = {
+      date: { $gte: startDate, $lte: endDate },
+    };
+    if (userId) filter.userId = userId;
+
+    const records = await Attendance.find(filter)
+      .populate("userId", "name email department")
+      .sort("date")
+      .lean();
+
+    // Group by employee
+    const grouped: Record<
+      string,
+      {
+        name: string;
+        email: string;
+        department: string;
+        records: typeof records;
+        totalHours: number;
+        presentDays: number;
+        lateDays: number;
+        absentDays: number;
+        halfDays: number;
+      }
+    > = {};
+
+    for (const r of records) {
+      const user = r.userId as any;
+      const uid = user._id?.toString() || String(r.userId);
+      if (!grouped[uid]) {
+        grouped[uid] = {
+          name: user.name || "Unknown",
+          email: user.email || "",
+          department: user.department || "",
+          records: [],
+          totalHours: 0,
+          presentDays: 0,
+          lateDays: 0,
+          absentDays: 0,
+          halfDays: 0,
+        };
+      }
+      grouped[uid].records.push(r);
+      grouped[uid].totalHours += r.totalHours || 0;
+      if (r.status === "present") grouped[uid].presentDays++;
+      else if (r.status === "late") grouped[uid].lateDays++;
+      else if (r.status === "absent") grouped[uid].absentDays++;
+      else if (r.status === "half-day") grouped[uid].halfDays++;
+    }
+
+    return {
+      month: `${year}-${String(m).padStart(2, "0")}`,
+      startDate,
+      endDate,
+      employees: Object.values(grouped),
+      allRecords: records,
     };
   }
 }

@@ -1,5 +1,6 @@
 import { Response, NextFunction } from "express";
 import { AttendanceService } from "../services/attendanceService";
+import { EmailService } from "../services/emailService";
 import { AuthRequest } from "../types";
 
 export class AttendanceController {
@@ -9,7 +10,29 @@ export class AttendanceController {
         req.user!._id.toString(),
         req.body.notes
       );
-      res.status(200).json({ success: true, message: "Clocked in successfully.", data: record });
+
+      // Send clock-in email to admins (non-blocking)
+      EmailService.sendClockInNotification(
+        req.user!.name,
+        req.user!.email,
+        record.clockIn!
+      );
+
+      // Send late alert if employee is late
+      if (record.isLate && record.lateByMinutes > 0) {
+        EmailService.sendLateAlertNotification(
+          req.user!.name,
+          req.user!.email,
+          record.clockIn!,
+          record.lateByMinutes
+        );
+      }
+
+      const message = record.isLate
+        ? `Clocked in (late by ${record.lateByMinutes} min).`
+        : "Clocked in successfully.";
+
+      res.status(200).json({ success: true, message, data: record });
     } catch (error) { next(error); }
   }
 
@@ -19,6 +42,16 @@ export class AttendanceController {
         req.user!._id.toString(),
         req.body.notes
       );
+
+      // Send email notification to admins (non-blocking)
+      EmailService.sendClockOutNotification(
+        req.user!.name,
+        req.user!.email,
+        record.clockIn!,
+        record.clockOut!,
+        record.totalHours!
+      );
+
       res.status(200).json({ success: true, message: "Clocked out successfully.", data: record });
     } catch (error) { next(error); }
   }
@@ -34,6 +67,13 @@ export class AttendanceController {
     try {
       const result = await AttendanceService.getAll(req.query as any);
       res.status(200).json({ success: true, message: "Attendance records fetched.", ...result });
+    } catch (error) { next(error); }
+  }
+
+  static async getTodayLiveStatus(_req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const result = await AttendanceService.getTodayLiveStatus();
+      res.status(200).json({ success: true, message: "Live status fetched.", data: result });
     } catch (error) { next(error); }
   }
 

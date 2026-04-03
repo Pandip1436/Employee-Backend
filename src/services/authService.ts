@@ -25,6 +25,10 @@ export class AuthService {
     const user = await User.create(data);
     const token = this.generateToken(user._id.toString());
 
+    // Store active token
+    user.activeToken = token;
+    await user.save();
+
     return { user, token };
   }
 
@@ -72,6 +76,14 @@ export class AuthService {
 
     const token = this.generateToken(user._id.toString());
 
+    // Store active token — invalidates any previous session
+    user.activeToken = token;
+    await User.updateOne({ _id: user._id }, { activeToken: token });
+
     return { user, token };
+  }
+
+  static async logout(userId: string): Promise<void> {
+    await User.updateOne({ _id: userId }, { $unset: { activeToken: 1 } });
   }
 }

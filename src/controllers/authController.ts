@@ -50,6 +50,17 @@ export class AuthController {
     });
   }
 
+  static async logout(
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      await AuthService.logout(req.user!._id.toString());
+      res.status(200).json({ success: true, message: "Logged out successfully." });
+    } catch (error) { next(error); }
+  }
+
   static async updateProfile(
     req: AuthRequest,
     res: Response,

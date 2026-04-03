@@ -21,9 +21,14 @@ export const authenticate = async (
       id: string;
     };
 
-    const user = await User.findById(decoded.id).select("+password");
+    const user = await User.findById(decoded.id).select("+password +activeToken");
     if (!user || !user.isActive) {
       throw new ApiError(401, "User not found or deactivated.");
+    }
+
+    // Check if this token matches the active session
+    if (user.activeToken && user.activeToken !== token) {
+      throw new ApiError(401, "Session expired. You have been logged in from another device.");
     }
 
     req.user = user;

@@ -12,6 +12,7 @@ export interface IUser extends Document {
   role: UserRole;
   department?: string;
   isActive: boolean;
+  activeToken?: string;
   createdAt: Date;
   updatedAt: Date;
   comparePassword(candidatePassword: string): Promise<boolean>;
