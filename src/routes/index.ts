@@ -8,6 +8,7 @@ import reportRoutes from "./reportRoutes";
 import attendanceRoutes from "./attendanceRoutes";
 import leaveRoutes from "./leaveRoutes";
 import documentRoutes from "./documentRoutes";
+import employeeProfileRoutes from "./employeeProfileRoutes";
 
 const router = Router();
 
@@ -20,5 +21,6 @@ router.use("/reports", reportRoutes);
 router.use("/attendance", attendanceRoutes);
 router.use("/leaves", leaveRoutes);
 router.use("/documents", documentRoutes);
+router.use("/employee-profile", employeeProfileRoutes);
 
 export default router;
