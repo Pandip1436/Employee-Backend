@@ -12,6 +12,7 @@ import employeeProfileRoutes from "./employeeProfileRoutes";
 import holidayRoutes from "./holidayRoutes";
 import wfhRoutes from "./wfhRoutes";
 import compOffRoutes from "./compOffRoutes";
+import weeklyTimesheetRoutes from "./weeklyTimesheetRoutes";
 
 const router = Router();
 
@@ -28,5 +29,6 @@ router.use("/employee-profile", employeeProfileRoutes);
 router.use("/holidays", holidayRoutes);
 router.use("/wfh", wfhRoutes);
 router.use("/compoff", compOffRoutes);
+router.use("/weekly-timesheet", weeklyTimesheetRoutes);
 
 export default router;

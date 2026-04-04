@@ -1,0 +1,92 @@
+import { Response, NextFunction } from "express";
+import { WeeklyTimesheetService } from "../services/weeklyTimesheetService";
+import { AuthRequest } from "../types";
+
+export class WeeklyTimesheetController {
+  static async getCurrentWeek(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const sheet = await WeeklyTimesheetService.getOrCreateWeek(req.user!._id.toString(), req.query.date as string);
+      res.json({ success: true, message: "Weekly timesheet fetched.", data: sheet });
+    } catch (e) { next(e); }
+  }
+
+  static async saveEntries(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const sheet = await WeeklyTimesheetService.saveEntries(req.user!._id.toString(), req.body.weekStart, req.body.entries);
+      res.json({ success: true, message: "Entries saved.", data: sheet });
+    } catch (e) { next(e); }
+  }
+
+  static async submit(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const sheet = await WeeklyTimesheetService.submit(req.user!._id.toString(), req.params.id as string);
+      res.json({ success: true, message: "Timesheet submitted.", data: sheet });
+    } catch (e) { next(e); }
+  }
+
+  static async getById(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const sheet = await WeeklyTimesheetService.getById(req.params.id as string);
+      res.json({ success: true, message: "Timesheet fetched.", data: sheet });
+    } catch (e) { next(e); }
+  }
+
+  static async getMyHistory(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const result = await WeeklyTimesheetService.getMyHistory(req.user!._id.toString(), req.query as any);
+      res.json({ success: true, message: "History fetched.", ...result });
+    } catch (e) { next(e); }
+  }
+
+  static async getPendingApprovals(_req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const result = await WeeklyTimesheetService.getPendingApprovals(_req.query as any);
+      res.json({ success: true, message: "Pending approvals fetched.", ...result });
+    } catch (e) { next(e); }
+  }
+
+  static async approve(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { status, comment } = req.body;
+      const sheet = await WeeklyTimesheetService.approve(req.params.id as string, req.user!._id.toString(), status, comment);
+      res.json({ success: true, message: `Timesheet ${status}.`, data: sheet });
+    } catch (e) { next(e); }
+  }
+
+  static async getAllSheets(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const result = await WeeklyTimesheetService.getAllSheets(req.query as any);
+      res.json({ success: true, message: "All timesheets fetched.", ...result });
+    } catch (e) { next(e); }
+  }
+
+  static async getProjectSummary(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { startDate, endDate } = req.query as { startDate: string; endDate: string };
+      const data = await WeeklyTimesheetService.getProjectSummary(startDate, endDate);
+      res.json({ success: true, message: "Project summary fetched.", data });
+    } catch (e) { next(e); }
+  }
+
+  static async getDashboardStats(_req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const data = await WeeklyTimesheetService.getDashboardStats();
+      res.json({ success: true, message: "Dashboard stats.", data });
+    } catch (e) { next(e); }
+  }
+
+  static async getMissing(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const data = await WeeklyTimesheetService.getMissingSubmissions(req.query.weekStart as string || new Date().toISOString());
+      res.json({ success: true, message: "Missing submissions.", data });
+    } catch (e) { next(e); }
+  }
+
+  static async getOvertimeReport(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { startDate, endDate } = req.query as { startDate: string; endDate: string };
+      const data = await WeeklyTimesheetService.getOvertimeReport(startDate, endDate);
+      res.json({ success: true, message: "Overtime report.", data });
+    } catch (e) { next(e); }
+  }
+}
