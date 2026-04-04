@@ -16,20 +16,22 @@ function getAdminEmails(): string[] {
 }
 
 function formatTime(date: Date): string {
-  return date.toLocaleTimeString("en-IN", {
+  return new Date(date).toLocaleTimeString("en-IN", {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
     hour12: true,
+    timeZone: "Asia/Kolkata", 
   });
 }
 
 function formatDate(date: Date): string {
-  return date.toLocaleDateString("en-IN", {
+  return new Date(date).toLocaleDateString("en-IN", {
     weekday: "long",
     year: "numeric",
     month: "long",
     day: "numeric",
+    timeZone: "Asia/Kolkata", 
   });
 }
 
