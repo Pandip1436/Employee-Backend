@@ -18,6 +18,8 @@ import announcementRoutes from "./announcementRoutes";
 import recognitionRoutes from "./recognitionRoutes";
 import surveyRoutes from "./surveyRoutes";
 import adminSettingsRoutes from "./adminSettingsRoutes";
+import performanceRoutes from "./performanceRoutes";
+import learningRoutes from "./learningRoutes";
 
 const router = Router();
 
@@ -40,5 +42,7 @@ router.use("/announcements", announcementRoutes);
 router.use("/recognition", recognitionRoutes);
 router.use("/surveys", surveyRoutes);
 router.use("/admin/settings", adminSettingsRoutes);
+router.use("/performance", performanceRoutes);
+router.use("/learning", learningRoutes);
 
 export default router;
