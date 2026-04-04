@@ -14,6 +14,10 @@ import wfhRoutes from "./wfhRoutes";
 import compOffRoutes from "./compOffRoutes";
 import weeklyTimesheetRoutes from "./weeklyTimesheetRoutes";
 import dashboardRoutes from "./dashboardRoutes";
+import announcementRoutes from "./announcementRoutes";
+import recognitionRoutes from "./recognitionRoutes";
+import surveyRoutes from "./surveyRoutes";
+import adminSettingsRoutes from "./adminSettingsRoutes";
 
 const router = Router();
 
@@ -32,5 +36,9 @@ router.use("/wfh", wfhRoutes);
 router.use("/compoff", compOffRoutes);
 router.use("/weekly-timesheet", weeklyTimesheetRoutes);
 router.use("/dashboard", dashboardRoutes);
+router.use("/announcements", announcementRoutes);
+router.use("/recognition", recognitionRoutes);
+router.use("/surveys", surveyRoutes);
+router.use("/admin/settings", adminSettingsRoutes);
 
 export default router;
