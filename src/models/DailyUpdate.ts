@@ -11,6 +11,10 @@ export interface IDailyUpdate {
   status: DailyUpdateStatus;
   proof?: string;
   planForTomorrow: string;
+  reviewedBy?: mongoose.Types.ObjectId;
+  reviewedAt?: Date;
+  reviewComment?: string;
+  reviewStatus?: "reviewed" | "needs-improvement";
   createdAt: Date;
   updatedAt: Date;
 }
@@ -28,6 +32,13 @@ const dailyUpdateSchema = new Schema<IDailyUpdate>(
     },
     proof: { type: String, trim: true },
     planForTomorrow: { type: String, required: true, trim: true },
+    reviewedBy: { type: Schema.Types.ObjectId, ref: "User" },
+    reviewedAt: { type: Date },
+    reviewComment: { type: String, trim: true },
+    reviewStatus: {
+      type: String,
+      enum: ["reviewed", "needs-improvement"],
+    },
   },
   { timestamps: true }
 );

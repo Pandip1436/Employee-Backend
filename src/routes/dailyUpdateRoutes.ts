@@ -12,6 +12,7 @@ router.get("/my", DailyUpdateController.getMyUpdates as any);
 router.get("/team/all", authorize("admin", "manager") as any, DailyUpdateController.getTeamUpdates as any);
 
 // Dynamic routes after
+router.patch("/:id/review", authorize("admin", "manager") as any, DailyUpdateController.review as any);
 router.get("/:id", DailyUpdateController.getById as any);
 router.put("/:id", DailyUpdateController.update as any);
 router.delete("/:id", DailyUpdateController.delete as any);

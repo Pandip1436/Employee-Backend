@@ -44,4 +44,11 @@ export class DailyUpdateController {
       res.json({ success: true, message: "Update fetched.", data });
     } catch (e) { next(e); }
   }
+
+  static async review(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const data = await DailyUpdateService.review(req.params.id, req.user!._id.toString(), req.body);
+      res.json({ success: true, message: "Update reviewed.", data });
+    } catch (e) { next(e); }
+  }
 }
