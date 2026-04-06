@@ -20,6 +20,7 @@ import surveyRoutes from "./surveyRoutes";
 import adminSettingsRoutes from "./adminSettingsRoutes";
 import performanceRoutes from "./performanceRoutes";
 import learningRoutes from "./learningRoutes";
+import dailyUpdateRoutes from "./dailyUpdateRoutes";
 
 const router = Router();
 
@@ -44,5 +45,6 @@ router.use("/surveys", surveyRoutes);
 router.use("/admin/settings", adminSettingsRoutes);
 router.use("/performance", performanceRoutes);
 router.use("/learning", learningRoutes);
+router.use("/daily-updates", dailyUpdateRoutes);
 
 export default router;
