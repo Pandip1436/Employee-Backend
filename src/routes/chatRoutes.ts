@@ -16,5 +16,6 @@ router.post("/:conversationId/messages", ChatController.sendMessage as any);
 router.get("/:conversationId/messages", ChatController.getMessages as any);
 router.post("/:conversationId/participants", ChatController.addParticipants as any);
 router.patch("/:conversationId/read", ChatController.markAsRead as any);
+router.delete("/messages/:messageId", ChatController.deleteMessage as any);
 
 export default router;

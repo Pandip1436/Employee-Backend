@@ -126,6 +126,25 @@ export class ChatController {
     }
   }
 
+  static async deleteMessage(
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      await ChatService.deleteMessage(
+        req.params.messageId,
+        req.user!._id.toString()
+      );
+      res.status(200).json({
+        success: true,
+        message: "Message deleted.",
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async markAsRead(
     req: AuthRequest,
     res: Response,

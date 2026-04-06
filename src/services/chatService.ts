@@ -120,7 +120,7 @@ export class ChatService {
     const [data, total] = await Promise.all([
       Message.find(filter)
         .populate("senderId", "name email")
-        .sort({ createdAt: -1 })
+        .sort({ createdAt: 1 })
         .skip(skip)
         .limit(limit),
       Message.countDocuments(filter),
@@ -170,6 +170,36 @@ export class ChatService {
       },
       { $addToSet: { readBy: userId } }
     );
+  }
+
+  static async deleteMessage(messageId: string, userId: string) {
+    const message = await Message.findById(messageId);
+    if (!message) throw new ApiError(404, "Message not found.");
+    if (message.senderId.toString() !== userId) {
+      throw new ApiError(403, "You can only delete your own messages.");
+    }
+
+    const convoId = message.conversationId;
+    await Message.findByIdAndDelete(messageId);
+
+    // Update lastMessage on conversation
+    const lastMsg = await Message.findOne({ conversationId: convoId })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    if (lastMsg) {
+      await Conversation.findByIdAndUpdate(convoId, {
+        lastMessage: {
+          text: lastMsg.text,
+          senderId: lastMsg.senderId,
+          createdAt: lastMsg.createdAt,
+        },
+      });
+    } else {
+      await Conversation.findByIdAndUpdate(convoId, {
+        $unset: { lastMessage: 1 },
+      });
+    }
   }
 
   static async getUnreadCount(userId: string) {
