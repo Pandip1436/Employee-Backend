@@ -21,6 +21,7 @@ import adminSettingsRoutes from "./adminSettingsRoutes";
 import performanceRoutes from "./performanceRoutes";
 import learningRoutes from "./learningRoutes";
 import dailyUpdateRoutes from "./dailyUpdateRoutes";
+import chatRoutes from "./chatRoutes";
 
 const router = Router();
 
@@ -46,5 +47,6 @@ router.use("/admin/settings", adminSettingsRoutes);
 router.use("/performance", performanceRoutes);
 router.use("/learning", learningRoutes);
 router.use("/daily-updates", dailyUpdateRoutes);
+router.use("/chat", chatRoutes);
 
 export default router;
