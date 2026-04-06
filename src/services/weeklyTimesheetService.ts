@@ -90,11 +90,14 @@ export class WeeklyTimesheetService {
     return { data, pagination: { total, page, limit, pages: Math.ceil(total / limit) } };
   }
 
-  static async getPendingApprovals(query: { page?: number; limit?: number }) {
+  static async getPendingApprovals(query: { page?: number; limit?: number; status?: string }) {
     const { page, limit, skip } = parsePagination(query);
-    const filter = { status: "submitted" };
+    const validStatuses = ["submitted", "approved", "rejected"];
+    const status = query.status && validStatuses.includes(query.status) ? query.status : "submitted";
+    const filter = { status };
+    const sortField = status === "submitted" ? "-submittedAt" : "-approvedAt";
     const [data, total] = await Promise.all([
-      WeeklyTimesheet.find(filter).populate("userId", "name email department").populate("entries.projectId", "name client").sort("-submittedAt").skip(skip).limit(limit),
+      WeeklyTimesheet.find(filter).populate("userId", "name email department").populate("entries.projectId", "name client").populate("approvedBy", "name email").sort(sortField).skip(skip).limit(limit),
       WeeklyTimesheet.countDocuments(filter),
     ]);
     return { data, pagination: { total, page, limit, pages: Math.ceil(total / limit) } };
