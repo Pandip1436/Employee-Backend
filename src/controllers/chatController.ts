@@ -164,6 +164,23 @@ export class ChatController {
     }
   }
 
+  static async getChatUsers(
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const users = await ChatService.getChatUsers(req.user!._id.toString());
+      res.status(200).json({
+        success: true,
+        message: "Chat users fetched.",
+        data: users,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async getUnreadCount(
     req: AuthRequest,
     res: Response,

@@ -202,6 +202,14 @@ export class ChatService {
     }
   }
 
+  static async getChatUsers(currentUserId: string) {
+    const User = (await import("../models/User")).default;
+    return User.find({ isActive: true, _id: { $ne: currentUserId } })
+      .select("name email department")
+      .sort("name")
+      .lean();
+  }
+
   static async getUnreadCount(userId: string) {
     const conversations = await Conversation.find({
       participants: userId,

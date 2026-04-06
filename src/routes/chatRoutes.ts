@@ -9,6 +9,7 @@ router.use(authenticate as any);
 router.post("/direct", ChatController.getOrCreateDirect as any);
 router.post("/group", ChatController.createGroup as any);
 router.get("/conversations", ChatController.getMyConversations as any);
+router.get("/users", ChatController.getChatUsers as any);
 router.get("/unread-count", ChatController.getUnreadCount as any);
 
 // Messages (dynamic routes after static)
