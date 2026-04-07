@@ -12,14 +12,14 @@ export class DailyUpdateController {
 
   static async update(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      const data = await DailyUpdateService.update(req.params.id, req.user!._id.toString(), req.body);
+      const data = await DailyUpdateService.update(req.params.id as string, req.user!._id.toString(), req.body);
       res.json({ success: true, message: "Update edited.", data });
     } catch (e) { next(e); }
   }
 
   static async delete(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      await DailyUpdateService.delete(req.params.id, req.user!._id.toString());
+      await DailyUpdateService.delete(req.params.id as string, req.user!._id.toString());
       res.json({ success: true, message: "Update deleted." });
     } catch (e) { next(e); }
   }
@@ -40,14 +40,14 @@ export class DailyUpdateController {
 
   static async getById(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      const data = await DailyUpdateService.getById(req.params.id);
+      const data = await DailyUpdateService.getById(req.params.id as string);
       res.json({ success: true, message: "Update fetched.", data });
     } catch (e) { next(e); }
   }
 
   static async review(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      const data = await DailyUpdateService.review(req.params.id, req.user!._id.toString(), req.body);
+      const data = await DailyUpdateService.review(req.params.id as string, req.user!._id.toString(), req.body);
       res.json({ success: true, message: "Update reviewed.", data });
     } catch (e) { next(e); }
   }

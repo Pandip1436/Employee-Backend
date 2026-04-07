@@ -70,7 +70,7 @@ export class ChatController {
   ): Promise<void> {
     try {
       const message = await ChatService.sendMessage(
-        req.params.conversationId,
+        req.params.conversationId as string,
         req.user!._id.toString(),
         req.body.text
       );
@@ -91,7 +91,7 @@ export class ChatController {
   ): Promise<void> {
     try {
       const result = await ChatService.getMessages(
-        req.params.conversationId,
+        req.params.conversationId as string,
         req.user!._id.toString(),
         req.query as any
       );
@@ -112,7 +112,7 @@ export class ChatController {
   ): Promise<void> {
     try {
       const conversation = await ChatService.addParticipants(
-        req.params.conversationId,
+        req.params.conversationId as string,
         req.user!._id.toString(),
         req.body.participants
       );
@@ -133,7 +133,7 @@ export class ChatController {
   ): Promise<void> {
     try {
       await ChatService.deleteMessage(
-        req.params.messageId,
+        req.params.messageId as string,
         req.user!._id.toString()
       );
       res.status(200).json({
@@ -152,7 +152,7 @@ export class ChatController {
   ): Promise<void> {
     try {
       await ChatService.markAsRead(
-        req.params.conversationId,
+        req.params.conversationId as string,
         req.user!._id.toString()
       );
       res.status(200).json({
