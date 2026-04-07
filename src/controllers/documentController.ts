@@ -1,7 +1,9 @@
 import { Response, NextFunction } from "express";
 import { DocumentService } from "../services/documentService";
 import { AuthRequest } from "../types";
+import { ApiError } from "../utils/ApiError";
 import path from "path";
+import fs from "fs";
 
 export class DocumentController {
   static async upload(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
@@ -42,9 +44,29 @@ export class DocumentController {
   static async download(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const doc = await DocumentService.getById(req.params.id as string);
-      const filePath = path.resolve(doc.path);
-      res.download(filePath, doc.originalName);
-    } catch (error) { next(error); }
+
+      // Resolve absolute path: if doc.path is already absolute, use it; otherwise resolve from project root
+      const filePath = path.isAbsolute(doc.path)
+        ? doc.path
+        : path.resolve(process.cwd(), doc.path);
+
+      // Check if file exists on disk
+      if (!fs.existsSync(filePath)) {
+        throw new ApiError(
+          404,
+          "File not found on server. It may have been removed or storage was reset."
+        );
+      }
+
+      res.setHeader("Content-Type", doc.mimeType || "application/octet-stream");
+      res.download(filePath, doc.originalName, (err) => {
+        if (err && !res.headersSent) {
+          next(err);
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
   }
 
   static async delete(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
