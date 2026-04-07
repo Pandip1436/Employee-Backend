@@ -1,5 +1,6 @@
 import { Response, NextFunction } from "express";
 import { WeeklyTimesheetService } from "../services/weeklyTimesheetService";
+import { AuditService } from "../services/auditService";
 import { AuthRequest } from "../types";
 
 export class WeeklyTimesheetController {
@@ -20,6 +21,13 @@ export class WeeklyTimesheetController {
   static async submit(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const sheet = await WeeklyTimesheetService.submit(req.user!._id.toString(), req.params.id as string);
+      AuditService.log({
+        userId: req.user!._id.toString(),
+        action: "Timesheet submitted",
+        module: "timesheet",
+        details: `${sheet.totalHours}h for week starting ${new Date(sheet.weekStart).toLocaleDateString()}`,
+        ipAddress: req.ip,
+      });
       res.json({ success: true, message: "Timesheet submitted.", data: sheet });
     } catch (e) { next(e); }
   }
@@ -49,6 +57,13 @@ export class WeeklyTimesheetController {
     try {
       const { status, comment } = req.body;
       const sheet = await WeeklyTimesheetService.approve(req.params.id as string, req.user!._id.toString(), status, comment);
+      AuditService.log({
+        userId: req.user!._id.toString(),
+        action: `Timesheet ${status}`,
+        module: "approvals",
+        details: comment ? `Comment: ${comment}` : `${sheet.totalHours}h reviewed`,
+        ipAddress: req.ip,
+      });
       res.json({ success: true, message: `Timesheet ${status}.`, data: sheet });
     } catch (e) { next(e); }
   }

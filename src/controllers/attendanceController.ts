@@ -1,6 +1,7 @@
 import { Response, NextFunction } from "express";
 import { AttendanceService } from "../services/attendanceService";
 import { EmailService } from "../services/emailService";
+import { AuditService } from "../services/auditService";
 import { AuthRequest } from "../types";
 
 export class AttendanceController {
@@ -32,6 +33,14 @@ export class AttendanceController {
         ? `Clocked in (late by ${record.lateByMinutes} min).`
         : "Clocked in successfully.";
 
+      AuditService.log({
+        userId: req.user!._id.toString(),
+        action: record.isLate ? "Clocked in (late)" : "Clocked in",
+        module: "attendance",
+        details: record.isLate ? `Late by ${record.lateByMinutes} min` : undefined,
+        ipAddress: req.ip,
+      });
+
       res.status(200).json({ success: true, message, data: record });
     } catch (error) { next(error); }
   }
@@ -51,6 +60,14 @@ export class AttendanceController {
         record.clockOut!,
         record.totalHours!
       );
+
+      AuditService.log({
+        userId: req.user!._id.toString(),
+        action: "Clocked out",
+        module: "attendance",
+        details: `${record.totalHours}h worked`,
+        ipAddress: req.ip,
+      });
 
       res.status(200).json({ success: true, message: "Clocked out successfully.", data: record });
     } catch (error) { next(error); }

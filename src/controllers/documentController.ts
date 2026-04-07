@@ -1,5 +1,6 @@
 import { Response, NextFunction } from "express";
 import { DocumentService } from "../services/documentService";
+import { AuditService } from "../services/auditService";
 import { AuthRequest } from "../types";
 import { ApiError } from "../utils/ApiError";
 import path from "path";
@@ -21,6 +22,14 @@ export class DocumentController {
         path: req.file.path,
         category: req.body.category,
         access: req.body.access,
+      });
+
+      AuditService.log({
+        userId: req.user!._id.toString(),
+        action: "Document uploaded",
+        module: "documents",
+        details: `${doc.name} (${(doc.size / 1024).toFixed(1)} KB)`,
+        ipAddress: req.ip,
       });
 
       res.status(201).json({ success: true, message: "Document uploaded.", data: doc });
@@ -76,6 +85,13 @@ export class DocumentController {
         req.user!._id.toString(),
         req.user!.role === "admin"
       );
+      AuditService.log({
+        userId: req.user!._id.toString(),
+        action: "Document deleted",
+        module: "documents",
+        details: `Document ID: ${req.params.id}`,
+        ipAddress: req.ip,
+      });
       res.status(200).json({ success: true, message: "Document deleted." });
     } catch (error) { next(error); }
   }

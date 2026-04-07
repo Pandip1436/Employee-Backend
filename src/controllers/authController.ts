@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { AuthService } from "../services/authService";
+import { AuditService } from "../services/auditService";
 import { AuthRequest } from "../types";
 
 export class AuthController {
@@ -10,6 +11,13 @@ export class AuthController {
   ): Promise<void> {
     try {
       const { user, token } = await AuthService.register(req.body);
+      AuditService.log({
+        userId: user._id.toString(),
+        action: "User registered",
+        module: "auth",
+        details: `${user.name} (${user.email}) — role: ${user.role}`,
+        ipAddress: req.ip,
+      });
       res.status(201).json({
         success: true,
         message: "User registered successfully.",
@@ -28,6 +36,13 @@ export class AuthController {
     try {
       const { email, password } = req.body;
       const { user, token } = await AuthService.login(email, password);
+      AuditService.log({
+        userId: user._id.toString(),
+        action: "User logged in",
+        module: "auth",
+        details: `${user.name} (${user.email})`,
+        ipAddress: req.ip,
+      });
       res.status(200).json({
         success: true,
         message: "Login successful.",
@@ -57,6 +72,13 @@ export class AuthController {
   ): Promise<void> {
     try {
       await AuthService.logout(req.user!._id.toString());
+      AuditService.log({
+        userId: req.user!._id.toString(),
+        action: "User logged out",
+        module: "auth",
+        details: req.user!.email,
+        ipAddress: req.ip,
+      });
       res.status(200).json({ success: true, message: "Logged out successfully." });
     } catch (error) { next(error); }
   }
@@ -80,6 +102,13 @@ export class AuthController {
     try {
       const { currentPassword, newPassword } = req.body;
       await AuthService.changePassword(req.user!._id.toString(), currentPassword, newPassword);
+      AuditService.log({
+        userId: req.user!._id.toString(),
+        action: "Password changed",
+        module: "auth",
+        details: req.user!.email,
+        ipAddress: req.ip,
+      });
       res.status(200).json({ success: true, message: "Password changed successfully." });
     } catch (error) { next(error); }
   }

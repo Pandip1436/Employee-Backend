@@ -1,6 +1,7 @@
 import { Response, NextFunction } from "express";
 import CompanySettings from "../models/CompanySettings";
 import AuditLog from "../models/AuditLog";
+import { AuditService } from "../services/auditService";
 import { AuthRequest } from "../types";
 import { parsePagination } from "../utils/helpers";
 
@@ -20,6 +21,13 @@ export class AdminSettingsController {
       const settings = await getSettings();
       Object.assign(settings, req.body);
       await settings.save();
+      AuditService.log({
+        userId: req.user!._id.toString(),
+        action: "Company settings updated",
+        module: "settings",
+        details: `Fields: ${Object.keys(req.body).join(", ")}`,
+        ipAddress: req.ip,
+      });
       res.json({ success: true, data: settings });
     } catch (e) { next(e); }
   }
@@ -33,6 +41,13 @@ export class AdminSettingsController {
       const s = await getSettings();
       s.designations = req.body.designations;
       await s.save();
+      AuditService.log({
+        userId: req.user!._id.toString(),
+        action: "Designations updated",
+        module: "settings",
+        details: `${s.designations.length} designations`,
+        ipAddress: req.ip,
+      });
       res.json({ success: true, data: s.designations });
     } catch (e) { next(e); }
   }
@@ -46,6 +61,13 @@ export class AdminSettingsController {
       const s = await getSettings();
       s.roles = req.body.roles;
       await s.save();
+      AuditService.log({
+        userId: req.user!._id.toString(),
+        action: "Roles & permissions updated",
+        module: "roles",
+        details: `${s.roles.length} roles`,
+        ipAddress: req.ip,
+      });
       res.json({ success: true, data: s.roles });
     } catch (e) { next(e); }
   }
@@ -59,6 +81,12 @@ export class AdminSettingsController {
       const s = await getSettings();
       s.leavePolicy = req.body;
       await s.save();
+      AuditService.log({
+        userId: req.user!._id.toString(),
+        action: "Leave policy updated",
+        module: "settings",
+        ipAddress: req.ip,
+      });
       res.json({ success: true, data: s.leavePolicy });
     } catch (e) { next(e); }
   }
@@ -72,6 +100,13 @@ export class AdminSettingsController {
       const s = await getSettings();
       s.emailTemplates = req.body.templates;
       await s.save();
+      AuditService.log({
+        userId: req.user!._id.toString(),
+        action: "Email templates updated",
+        module: "settings",
+        details: `${s.emailTemplates.length} templates`,
+        ipAddress: req.ip,
+      });
       res.json({ success: true, data: s.emailTemplates });
     } catch (e) { next(e); }
   }
@@ -83,7 +118,11 @@ export class AdminSettingsController {
       const filter: Record<string, unknown> = {};
       if (req.query.userId) filter.userId = req.query.userId;
       if (req.query.module) filter.module = req.query.module;
-      if (req.query.action) filter.action = req.query.action;
+      if (req.query.action) {
+        // Case-insensitive partial match for action search
+        const escaped = String(req.query.action).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        filter.action = { $regex: escaped, $options: "i" };
+      }
       const [data, total] = await Promise.all([
         AuditLog.find(filter).populate("userId", "name email").sort("-createdAt").skip(skip).limit(limit),
         AuditLog.countDocuments(filter),
