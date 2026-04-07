@@ -3,15 +3,32 @@ import { ApiError } from "../utils/ApiError";
 import { parsePagination } from "../utils/helpers";
 
 export class AttendanceService {
+  /**
+   * Returns midnight "today" in the configured business timezone (default IST).
+   * This ensures attendance records are bucketed by the user's calendar day,
+   * not the server's local-time day (server may be in UTC).
+   */
   private static getToday(): Date {
+    const tz = process.env.BUSINESS_TIMEZONE || "Asia/Kolkata";
     const now = new Date();
-    return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    // Format current instant as YYYY-MM-DD in the business timezone
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: tz,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(now);
+    const y = Number(parts.find((p) => p.type === "year")?.value);
+    const m = Number(parts.find((p) => p.type === "month")?.value);
+    const d = Number(parts.find((p) => p.type === "day")?.value);
+    // Store as UTC midnight of that calendar date — stable, no DST surprises
+    return new Date(Date.UTC(y, m - 1, d));
   }
 
   private static getOfficeStart(today: Date): Date {
     const [h, m] = (process.env.OFFICE_START_TIME || "09:15").split(":").map(Number);
     const officeStart = new Date(today);
-    officeStart.setHours(h, m, 0, 0);
+    officeStart.setUTCHours(h, m, 0, 0);
     return officeStart;
   }
 
@@ -111,9 +128,14 @@ export class AttendanceService {
 
   static async getTodayLiveStatus() {
     const today = this.getToday();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
 
-    // All attendance records for today
-    const records = await Attendance.find({ date: today })
+    // Use a date range to be robust to timezone / precision mismatches
+    // (records may have been saved with slightly different "midnight" values)
+    const records = await Attendance.find({
+      date: { $gte: today, $lt: tomorrow },
+    })
       .populate("userId", "name email department role")
       .lean();
 
