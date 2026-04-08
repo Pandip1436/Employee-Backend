@@ -11,6 +11,7 @@ router.get("/my", CompOffController.getMyRequests as any);
 router.get("/balance", CompOffController.getBalance as any);
 router.get("/", authorize("admin", "manager") as any, CompOffController.getAll as any);
 router.patch("/:id/approve", authorize("admin", "manager") as any, CompOffController.approve as any);
+router.patch("/:id/use", CompOffController.markUsed as any);
 router.delete("/:id", CompOffController.delete as any);
 
 export default router;

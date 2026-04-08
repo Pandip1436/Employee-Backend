@@ -1,7 +1,21 @@
 import Leave from "../models/Leave";
+import CompOff from "../models/CompOff";
+import { CompOffService } from "./compOffService";
 import CompanySettings from "../models/CompanySettings";
 import { ApiError } from "../utils/ApiError";
 import { parsePagination } from "../utils/helpers";
+
+// Pick the oldest non-expired approved comp-offs to consume `count` days
+async function pickAvailableCompOffs(userId: string, count: number) {
+  const now = new Date();
+  return CompOff.find({
+    userId,
+    status: "approved",
+    $or: [{ expiryDate: { $exists: false } }, { expiryDate: { $gte: now } }],
+  })
+    .sort({ expiryDate: 1, createdAt: 1 })
+    .limit(count);
+}
 
 const DEFAULT_LEAVE_POLICY = {
   casual: { total: 12 },
@@ -36,6 +50,17 @@ export class LeaveService {
     const days = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
 
     if (days < 1) throw new ApiError(400, "End date must be after start date.");
+
+    // For comp-off leave, ensure the user has enough available comp-offs
+    if (data.type === "compoff") {
+      const available = await pickAvailableCompOffs(userId, days);
+      if (available.length < days) {
+        throw new ApiError(
+          400,
+          `Not enough comp-off balance. You have ${available.length}, need ${days}.`
+        );
+      }
+    }
 
     return Leave.create({ ...data, userId, days });
   }
@@ -107,6 +132,7 @@ export class LeaveService {
     }
 
     const policy = await getActiveLeavePolicy();
+    const compOff = await CompOffService.getBalance(userId);
     return {
       casual: {
         total: policy.casual.total,
@@ -122,6 +148,11 @@ export class LeaveService {
         total: policy.earned.total,
         used: used.earned,
         remaining: policy.earned.total - used.earned,
+      },
+      compoff: {
+        total: compOff.earned,
+        used: compOff.used,
+        remaining: compOff.available,
       },
     };
   }
@@ -143,6 +174,23 @@ export class LeaveService {
     if (status === "rejected" && rejectionComment) {
       leave.rejectionComment = rejectionComment;
     }
+
+    // On approval of a comp-off leave, mark that many comp-off records as used
+    if (status === "approved" && leave.type === "compoff") {
+      const toConsume = await pickAvailableCompOffs(leave.userId.toString(), leave.days);
+      if (toConsume.length < leave.days) {
+        throw new ApiError(
+          400,
+          `Cannot approve: only ${toConsume.length} comp-offs available, ${leave.days} required.`
+        );
+      }
+      const ids = toConsume.map((c) => c._id);
+      await CompOff.updateMany(
+        { _id: { $in: ids } },
+        { $set: { status: "used", usedDate: new Date() } }
+      );
+    }
+
     await leave.save();
     return leave;
   }

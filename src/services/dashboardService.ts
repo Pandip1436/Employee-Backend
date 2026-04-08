@@ -10,15 +10,15 @@ export class DashboardService {
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-    const [attendance, todayRecord, leaves, timesheets] = await Promise.all([
+    const [attendance, todayRecord, leaves, monthAttendance] = await Promise.all([
       Attendance.countDocuments({ userId, date: { $gte: monthStart }, status: { $in: ["present", "late"] } }),
       Attendance.findOne({ userId, date: today }),
       Leave.find({ userId, status: "approved", startDate: { $gte: monthStart } }),
-      WeeklyTimesheet.find({ userId, weekStart: { $gte: monthStart }, status: { $in: ["submitted", "approved"] } }),
+      Attendance.find({ userId, date: { $gte: monthStart } }).select("totalHours"),
     ]);
 
     const workingDays = Math.max(1, now.getDate());
-    const totalHours = timesheets.reduce((s, t) => s + t.totalHours, 0);
+    const totalHours = monthAttendance.reduce((s, a) => s + (a.totalHours || 0), 0);
     const totalLeaveDays = leaves.reduce((s, l) => s + l.days, 0);
 
     return {

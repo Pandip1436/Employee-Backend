@@ -39,6 +39,13 @@ export class CompOffController {
     } catch (error) { next(error); }
   }
 
+  static async markUsed(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const compOff = await CompOffService.markUsed(req.params.id as string, req.user!._id.toString());
+      res.status(200).json({ success: true, message: "Comp-off marked as used.", data: compOff });
+    } catch (error) { next(error); }
+  }
+
   static async delete(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       await CompOffService.delete(req.params.id as string, req.user!._id.toString());
