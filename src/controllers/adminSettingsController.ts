@@ -18,12 +18,9 @@ export class AdminSettingsController {
   }
   static async updateCompanySettings(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      await getSettings();
-      const updated = await CompanySettings.findOneAndUpdate(
-        {},
-        { $set: req.body },
-        { new: true, upsert: true }
-      );
+      const settings = await getSettings();
+      Object.assign(settings, req.body);
+      await settings.save();
       AuditService.log({
         userId: req.user!._id.toString(),
         action: "Company settings updated",
@@ -31,7 +28,7 @@ export class AdminSettingsController {
         details: `Fields: ${Object.keys(req.body).join(", ")}`,
         ipAddress: req.ip,
       });
-      res.json({ success: true, data: updated });
+      res.json({ success: true, data: settings });
     } catch (e) { next(e); }
   }
 
@@ -41,21 +38,17 @@ export class AdminSettingsController {
   }
   static async updateDesignations(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      await getSettings();
-      const designations = Array.isArray(req.body.designations) ? req.body.designations : [];
-      const updated = await CompanySettings.findOneAndUpdate(
-        {},
-        { $set: { designations } },
-        { new: true, upsert: true }
-      );
+      const s = await getSettings();
+      s.designations = req.body.designations;
+      await s.save();
       AuditService.log({
         userId: req.user!._id.toString(),
         action: "Designations updated",
         module: "settings",
-        details: `${designations.length} designations`,
+        details: `${s.designations.length} designations`,
         ipAddress: req.ip,
       });
-      res.json({ success: true, data: updated?.designations });
+      res.json({ success: true, data: s.designations });
     } catch (e) { next(e); }
   }
 
@@ -65,21 +58,17 @@ export class AdminSettingsController {
   }
   static async updateRoles(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      await getSettings();
-      const roles = Array.isArray(req.body.roles) ? req.body.roles : [];
-      const updated = await CompanySettings.findOneAndUpdate(
-        {},
-        { $set: { roles } },
-        { new: true, upsert: true }
-      );
+      const s = await getSettings();
+      s.roles = req.body.roles;
+      await s.save();
       AuditService.log({
         userId: req.user!._id.toString(),
         action: "Roles & permissions updated",
         module: "roles",
-        details: `${roles.length} roles`,
+        details: `${s.roles.length} roles`,
         ipAddress: req.ip,
       });
-      res.json({ success: true, data: updated?.roles });
+      res.json({ success: true, data: s.roles });
     } catch (e) { next(e); }
   }
 
@@ -89,25 +78,16 @@ export class AdminSettingsController {
   }
   static async updateLeavePolicy(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      // Ensure a settings doc exists
-      await getSettings();
-
-      // Use findOneAndUpdate with $set so nested-schema changes persist reliably.
-      // (Assigning to s.leavePolicy directly does not trigger Mongoose change detection
-      //  for nested paths in some schema definitions.)
-      const updated = await CompanySettings.findOneAndUpdate(
-        {},
-        { $set: { leavePolicy: req.body } },
-        { new: true, upsert: true }
-      );
-
+      const s = await getSettings();
+      s.leavePolicy = req.body;
+      await s.save();
       AuditService.log({
         userId: req.user!._id.toString(),
         action: "Leave policy updated",
         module: "settings",
         ipAddress: req.ip,
       });
-      res.json({ success: true, data: updated?.leavePolicy });
+      res.json({ success: true, data: s.leavePolicy });
     } catch (e) { next(e); }
   }
 
@@ -117,26 +97,17 @@ export class AdminSettingsController {
   }
   static async updateEmailTemplates(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      await getSettings();
-      // Support both { templates: [...] } and a raw array body
-      const templates = Array.isArray(req.body.templates)
-        ? req.body.templates
-        : Array.isArray(req.body)
-          ? req.body
-          : [];
-      const updated = await CompanySettings.findOneAndUpdate(
-        {},
-        { $set: { emailTemplates: templates } },
-        { new: true, upsert: true }
-      );
+      const s = await getSettings();
+      s.emailTemplates = req.body.templates;
+      await s.save();
       AuditService.log({
         userId: req.user!._id.toString(),
         action: "Email templates updated",
         module: "settings",
-        details: `${templates.length} templates`,
+        details: `${s.emailTemplates.length} templates`,
         ipAddress: req.ip,
       });
-      res.json({ success: true, data: updated?.emailTemplates });
+      res.json({ success: true, data: s.emailTemplates });
     } catch (e) { next(e); }
   }
 
