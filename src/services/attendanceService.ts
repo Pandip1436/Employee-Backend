@@ -83,6 +83,8 @@ export class AttendanceService {
     );
 
     if (record.totalHours < 4) {
+      record.status = "absent";
+    } else if (record.totalHours < 8) {
       record.status = "half-day";
     }
 

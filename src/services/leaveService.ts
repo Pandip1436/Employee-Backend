@@ -1,6 +1,27 @@
 import Leave from "../models/Leave";
+import CompanySettings from "../models/CompanySettings";
 import { ApiError } from "../utils/ApiError";
 import { parsePagination } from "../utils/helpers";
+
+const DEFAULT_LEAVE_POLICY = {
+  casual: { total: 12 },
+  sick: { total: 10 },
+  earned: { total: 15 },
+};
+
+async function getActiveLeavePolicy() {
+  try {
+    const s = await CompanySettings.findOne().lean();
+    const lp = (s as any)?.leavePolicy;
+    return {
+      casual: { total: lp?.casual?.total ?? DEFAULT_LEAVE_POLICY.casual.total },
+      sick: { total: lp?.sick?.total ?? DEFAULT_LEAVE_POLICY.sick.total },
+      earned: { total: lp?.earned?.total ?? DEFAULT_LEAVE_POLICY.earned.total },
+    };
+  } catch {
+    return DEFAULT_LEAVE_POLICY;
+  }
+}
 
 export class LeaveService {
   static async apply(userId: string, data: {
@@ -85,10 +106,23 @@ export class LeaveService {
       used[l.type as keyof typeof used] += l.days;
     }
 
+    const policy = await getActiveLeavePolicy();
     return {
-      casual: { total: 12, used: used.casual, remaining: 12 - used.casual },
-      sick: { total: 10, used: used.sick, remaining: 10 - used.sick },
-      earned: { total: 15, used: used.earned, remaining: 15 - used.earned },
+      casual: {
+        total: policy.casual.total,
+        used: used.casual,
+        remaining: policy.casual.total - used.casual,
+      },
+      sick: {
+        total: policy.sick.total,
+        used: used.sick,
+        remaining: policy.sick.total - used.sick,
+      },
+      earned: {
+        total: policy.earned.total,
+        used: used.earned,
+        remaining: policy.earned.total - used.earned,
+      },
     };
   }
 
