@@ -119,4 +119,12 @@ export class WeeklyTimesheetController {
       res.json({ success: true, message: "Compliance report.", data });
     } catch (e) { next(e); }
   }
+
+  static async getEmployeeTimesheetStatus(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { weekStart, department } = req.query as { weekStart?: string; department?: string };
+      const data = await WeeklyTimesheetService.getEmployeeTimesheetStatus(weekStart, department);
+      res.json({ success: true, message: "Employee timesheet status.", data });
+    } catch (e) { next(e); }
+  }
 }

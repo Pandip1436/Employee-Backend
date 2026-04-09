@@ -213,6 +213,40 @@ export class WeeklyTimesheetService {
     return { weeks: completedWeeks.length, employees };
   }
 
+  static async getEmployeeTimesheetStatus(weekStart?: string, department?: string) {
+    const User = (await import("../models/User")).default;
+    const { weekStart: ws } = this.getWeekRange(weekStart);
+
+    const userFilter: Record<string, unknown> = { isActive: true };
+    if (department) userFilter.department = department;
+
+    const [allUsers, sheets] = await Promise.all([
+      User.find(userFilter).select("name email department").lean(),
+      WeeklyTimesheet.find({ weekStart: ws })
+        .select("userId status totalHours submittedAt approvedAt managerComment")
+        .populate("approvedBy", "name")
+        .lean(),
+    ]);
+
+    const sheetMap = new Map(sheets.map((s) => [s.userId.toString(), s]));
+
+    return allUsers.map((u) => {
+      const sheet = sheetMap.get(u._id.toString());
+      return {
+        _id: u._id,
+        name: u.name,
+        email: u.email,
+        department: u.department || null,
+        status: sheet?.status ?? "not_started",
+        totalHours: sheet?.totalHours ?? 0,
+        submittedAt: sheet?.submittedAt ?? null,
+        approvedAt: sheet?.approvedAt ?? null,
+        managerComment: sheet?.managerComment ?? null,
+        sheetId: sheet?._id ?? null,
+      };
+    });
+  }
+
   static async getDashboardStats() {
     const now = new Date();
     const { weekStart } = this.getWeekRange();
