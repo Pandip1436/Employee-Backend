@@ -1,6 +1,7 @@
 import User from "../models/User";
 import Attendance from "../models/Attendance";
 import Leave from "../models/Leave";
+import Holiday from "../models/Holiday";
 import WeeklyTimesheet from "../models/WeeklyTimesheet";
 
 export class DashboardService {
@@ -10,14 +11,25 @@ export class DashboardService {
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-    const [attendance, todayRecord, leaves, monthAttendance] = await Promise.all([
+    const [attendance, todayRecord, leaves, monthAttendance, holidays] = await Promise.all([
       Attendance.countDocuments({ userId, date: { $gte: monthStart }, status: { $in: ["present", "late"] } }),
       Attendance.findOne({ userId, date: today }),
       Leave.find({ userId, status: "approved", startDate: { $gte: monthStart } }),
       Attendance.find({ userId, date: { $gte: monthStart } }).select("totalHours"),
+      Holiday.find({ date: { $gte: monthStart, $lte: today } }).select("date"),
     ]);
 
-    const workingDays = Math.max(1, now.getDate());
+    // Working days = Mon–Fri from start of month to today, minus declared holidays
+    let workingDays = 0;
+    for (let d = 1; d <= now.getDate(); d++) {
+      const dow = new Date(now.getFullYear(), now.getMonth(), d).getDay();
+      if (dow !== 0 && dow !== 6) workingDays++;
+    }
+    const holidayWeekdays = holidays.filter((h) => {
+      const dow = new Date(h.date).getDay();
+      return dow !== 0 && dow !== 6;
+    }).length;
+    workingDays = Math.max(1, workingDays - holidayWeekdays);
     const totalHours = monthAttendance.reduce((s, a) => s + (a.totalHours || 0), 0);
     const totalLeaveDays = leaves.reduce((s, l) => s + l.days, 0);
 
@@ -34,7 +46,6 @@ export class DashboardService {
   // ── Manager Stats ──
   static async getManagerStats() {
     const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
     const [pendingLeaves, pendingTimesheets, totalEmployees, todayPresent] = await Promise.all([
       Leave.countDocuments({ status: "pending" }),
