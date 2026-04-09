@@ -285,4 +285,38 @@ export class EmailService {
       "#dc2626"
     );
   }
+
+  /**
+   * Friday reminder for employees who haven't submitted their weekly timesheet.
+   * Sent directly to the employee (not admins).
+   */
+  static async sendTimesheetReminder(
+    employeeName: string,
+    employeeEmail: string,
+    weekLabel: string
+  ) {
+    const html = wrapLayout(
+      `
+      <p style="margin: 0 0 16px 0; color: #111827; font-size: 15px;">Hi ${employeeName},</p>
+      <p style="margin: 0 0 16px 0; color: #374151; font-size: 14px; line-height: 1.6;">
+        Your timesheet for <strong>${weekLabel}</strong> hasn't been submitted yet. Please log in and submit it before end of day.
+      </p>
+      <a href="${process.env.CLIENT_URL || "#"}/timesheet/weekly" style="display: inline-block; background: #4f46e5; color: #fff; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px;">Submit Timesheet</a>
+      `,
+      "#f59e0b",
+      "Timesheet Reminder"
+    );
+
+    try {
+      await transporter.sendMail({
+        from: `"United Nexa Tech" <${process.env.SMTP_USER}>`,
+        to: employeeEmail,
+        subject: `Reminder: Submit your timesheet for ${weekLabel}`,
+        html,
+      });
+      console.log(`[email] timesheet reminder sent to ${employeeEmail}`);
+    } catch (error) {
+      console.error(`[email] timesheet reminder failed:`, (error as Error).message);
+    }
+  }
 }

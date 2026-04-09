@@ -24,6 +24,8 @@ router.get("/all", authorize("admin") as any, WeeklyTimesheetController.getAllSh
 router.get("/dashboard-stats", authorize("admin", "manager") as any, WeeklyTimesheetController.getDashboardStats as any);
 router.get("/missing", authorize("admin", "manager") as any, WeeklyTimesheetController.getMissing as any);
 router.get("/overtime", authorize("admin", "manager") as any, WeeklyTimesheetController.getOvertimeReport as any);
+router.post("/reminders/send", authorize("admin") as any, WeeklyTimesheetController.sendReminders as any);
+router.get("/compliance", authorize("admin", "manager") as any, WeeklyTimesheetController.getCompliance as any);
 
 // Config
 router.get("/activity-types", ConfigController.getActivityTypes as any);

@@ -104,4 +104,19 @@ export class WeeklyTimesheetController {
       res.json({ success: true, message: "Overtime report.", data });
     } catch (e) { next(e); }
   }
+
+  static async sendReminders(_req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const result = await WeeklyTimesheetService.sendWeeklyReminders();
+      res.json({ success: true, message: `Reminders sent to ${result.sent} employees.`, data: result });
+    } catch (e) { next(e); }
+  }
+
+  static async getCompliance(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const weeks = parseInt((req.query.weeks as string) || "8", 10);
+      const data = await WeeklyTimesheetService.getCompliance(weeks);
+      res.json({ success: true, message: "Compliance report.", data });
+    } catch (e) { next(e); }
+  }
 }

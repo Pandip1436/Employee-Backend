@@ -150,6 +150,69 @@ export class WeeklyTimesheetService {
     }));
   }
 
+  /**
+   * Send Friday reminder emails to employees who haven't submitted this week.
+   * Trigger this from a cron job or via the admin endpoint.
+   */
+  static async sendWeeklyReminders() {
+    const { weekStart, weekEnd } = this.getWeekRange();
+    const User = (await import("../models/User")).default;
+    const { EmailService } = await import("./emailService");
+
+    const allUsers = await User.find({ isActive: true }).select("name email").lean();
+    const submitted = await WeeklyTimesheet.find({ weekStart, status: { $ne: "draft" } }).select("userId").lean();
+    const submittedIds = new Set(submitted.map((s) => s.userId.toString()));
+    const missing = allUsers.filter((u) => !submittedIds.has(u._id.toString()));
+
+    const weekLabel = `${weekStart.toLocaleDateString("en-GB", { day: "numeric", month: "short" })} – ${weekEnd.toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`;
+    for (const u of missing) {
+      EmailService.sendTimesheetReminder(u.name, u.email, weekLabel);
+    }
+    return { sent: missing.length, weekLabel };
+  }
+
+  /**
+   * Per-employee submission compliance over the last N weeks.
+   * Compliance % = on-time submissions / weeks
+   */
+  static async getCompliance(weeks = 8) {
+    const User = (await import("../models/User")).default;
+    const allUsers = await User.find({ isActive: true }).select("name email department").lean();
+
+    const now = new Date();
+    const weekRanges: { start: Date; end: Date }[] = [];
+    for (let i = 0; i < weeks; i++) {
+      const ref = new Date(now); ref.setDate(now.getDate() - i * 7);
+      const { weekStart, weekEnd } = this.getWeekRange(ref.toISOString());
+      weekRanges.push({ start: weekStart, end: weekEnd });
+    }
+    // Don't include the in-progress current week in the compliance window
+    const completedWeeks = weekRanges.slice(1);
+    if (completedWeeks.length === 0) return { weeks: 0, employees: [] };
+
+    const sheets = await WeeklyTimesheet.find({
+      weekStart: { $in: completedWeeks.map((w) => w.start) },
+      status: { $in: ["submitted", "approved"] },
+    }).select("userId weekStart status").lean();
+
+    const employees = allUsers.map((u) => {
+      const userSheets = sheets.filter((s) => s.userId.toString() === u._id.toString());
+      const submittedCount = userSheets.length;
+      const compliance = Math.round((submittedCount / completedWeeks.length) * 100);
+      return {
+        _id: u._id,
+        name: u.name,
+        email: u.email,
+        department: u.department,
+        submitted: submittedCount,
+        total: completedWeeks.length,
+        compliance,
+      };
+    });
+
+    return { weeks: completedWeeks.length, employees };
+  }
+
   static async getDashboardStats() {
     const now = new Date();
     const { weekStart } = this.getWeekRange();
