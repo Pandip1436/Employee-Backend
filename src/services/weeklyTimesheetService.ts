@@ -128,10 +128,10 @@ export class WeeklyTimesheetService {
   }
 
   static async getMissingSubmissions(weekStart: string) {
-    const { weekStart: ws } = this.getWeekRange(weekStart);
+    const { weekStart: ws, weekEnd: we } = this.getWeekRange(weekStart);
     const User = (await import("../models/User")).default;
     const allUsers = await User.find({ isActive: true }).select("name email department").lean();
-    const submitted = await WeeklyTimesheet.find({ weekStart: ws, status: { $ne: "draft" } }).select("userId").lean();
+    const submitted = await WeeklyTimesheet.find({ weekStart: { $gte: ws, $lte: we }, status: { $ne: "draft" } }).select("userId").lean();
     const submittedIds = new Set(submitted.map((s) => s.userId.toString()));
     return allUsers.filter((u) => !submittedIds.has(u._id.toString()));
   }
@@ -215,14 +215,14 @@ export class WeeklyTimesheetService {
 
   static async getEmployeeTimesheetStatus(weekStart?: string, department?: string) {
     const User = (await import("../models/User")).default;
-    const { weekStart: ws } = this.getWeekRange(weekStart);
+    const { weekStart: ws, weekEnd: we } = this.getWeekRange(weekStart);
 
     const userFilter: Record<string, unknown> = { isActive: true };
     if (department) userFilter.department = department;
 
     const [allUsers, sheets] = await Promise.all([
       User.find(userFilter).select("name email department").lean(),
-      WeeklyTimesheet.find({ weekStart: ws })
+      WeeklyTimesheet.find({ weekStart: { $gte: ws, $lte: we } })
         .select("userId status totalHours submittedAt approvedAt managerComment")
         .populate("approvedBy", "name")
         .lean(),
