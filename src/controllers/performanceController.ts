@@ -14,24 +14,113 @@ export class PerformanceController {
       const userId = req.query.userId || req.user!._id;
       const filter: Record<string, unknown> = { userId };
       if (req.query.status) filter.status = req.query.status;
-      const goals = await Goal.find(filter).sort("-createdAt");
+      if (req.query.period) filter.period = req.query.period;
+      if (req.query.year) filter.year = Number(req.query.year);
+      if (req.query.category) filter.category = req.query.category;
+      const goals = await Goal.find(filter).populate("parentGoalId", "title").sort("-createdAt");
       res.json({ success: true, data: goals });
     } catch (e) { next(e); }
   }
+
   static async createGoal(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const goal = await Goal.create({ ...req.body, userId: req.user!._id });
       res.status(201).json({ success: true, data: goal });
     } catch (e) { next(e); }
   }
+
   static async updateGoal(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const goal = await Goal.findByIdAndUpdate(req.params.id as string, req.body, { new: true });
       res.json({ success: true, data: goal });
     } catch (e) { next(e); }
   }
+
   static async deleteGoal(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try { await Goal.findByIdAndDelete(req.params.id as string); res.json({ success: true }); } catch (e) { next(e); }
+  }
+
+  // ── Goal Check-ins ──
+  static async addCheckIn(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const goal = await Goal.findById(req.params.id as string);
+      if (!goal) { res.status(404).json({ success: false, message: "Goal not found" }); return; }
+      const { progress, note } = req.body;
+      goal.checkIns.push({ progress, note, createdBy: req.user!._id, createdAt: new Date() });
+      goal.progress = progress;
+      // Auto-update status based on progress and timeline
+      if (progress >= 100) {
+        goal.status = "completed";
+        goal.completedAt = new Date();
+      } else if (goal.dueDate) {
+        const now = new Date();
+        const start = goal.startDate ? new Date(goal.startDate) : new Date(goal.createdAt);
+        const end = new Date(goal.dueDate);
+        const totalDays = Math.max(1, (end.getTime() - start.getTime()) / 86400000);
+        const elapsed = (now.getTime() - start.getTime()) / 86400000;
+        const expectedProgress = Math.min(100, (elapsed / totalDays) * 100);
+        if (progress >= expectedProgress - 10) goal.status = "on-track";
+        else if (progress >= expectedProgress - 25) goal.status = "at-risk";
+        else goal.status = "behind";
+      } else if (progress > 0) {
+        goal.status = "on-track";
+      }
+      await goal.save();
+      res.json({ success: true, data: goal });
+    } catch (e) { next(e); }
+  }
+
+  // ── Goal Milestones Toggle ──
+  static async toggleMilestone(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const goal = await Goal.findById(req.params.id as string);
+      if (!goal) { res.status(404).json({ success: false, message: "Goal not found" }); return; }
+      const ms = goal.milestones.id(req.params.milestoneId as string);
+      if (!ms) { res.status(404).json({ success: false, message: "Milestone not found" }); return; }
+      ms.completed = !ms.completed;
+      ms.completedAt = ms.completed ? new Date() : undefined;
+      // Recalc progress from milestones if no KPIs
+      if (goal.kpis.length === 0 && goal.milestones.length > 0) {
+        const done = goal.milestones.filter((m: any) => m.completed).length;
+        goal.progress = Math.round((done / goal.milestones.length) * 100);
+      }
+      await goal.save();
+      res.json({ success: true, data: goal });
+    } catch (e) { next(e); }
+  }
+
+  // ── Team Goals (for managers) ──
+  static async getTeamGoals(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const User = (await import("../models/User")).default;
+      const teamMembers = await User.find({ isActive: true }).select("_id name email department").lean();
+      const filter: Record<string, unknown> = { userId: { $in: teamMembers.map((u) => u._id) } };
+      if (req.query.period) filter.period = req.query.period;
+      if (req.query.year) filter.year = Number(req.query.year);
+      if (req.query.category) filter.category = req.query.category;
+      const goals = await Goal.find(filter).populate("userId", "name email department").sort("-createdAt");
+      res.json({ success: true, data: goals });
+    } catch (e) { next(e); }
+  }
+
+  // ── Goal Stats ──
+  static async getGoalStats(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const userId = req.query.userId || req.user!._id;
+      const year = Number(req.query.year) || new Date().getFullYear();
+      const period = req.query.period as string | undefined;
+      const filter: Record<string, unknown> = { userId, year };
+      if (period) filter.period = period;
+      const goals = await Goal.find(filter).lean();
+      const total = goals.length;
+      const completed = goals.filter((g) => g.status === "completed").length;
+      const onTrack = goals.filter((g) => g.status === "on-track").length;
+      const atRisk = goals.filter((g) => g.status === "at-risk").length;
+      const behind = goals.filter((g) => g.status === "behind").length;
+      const notStarted = goals.filter((g) => g.status === "not-started").length;
+      const avgProgress = total > 0 ? Math.round(goals.reduce((s, g) => s + g.progress, 0) / total) : 0;
+      res.json({ success: true, data: { total, completed, onTrack, atRisk, behind, notStarted, avgProgress } });
+    } catch (e) { next(e); }
   }
 
   // ── Reviews ──

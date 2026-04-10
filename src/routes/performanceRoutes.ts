@@ -8,9 +8,13 @@ router.use(authenticate as any);
 
 // Goals
 router.get("/goals", PerformanceController.getGoals as any);
+router.get("/goals/stats", PerformanceController.getGoalStats as any);
+router.get("/goals/team", authorize("admin", "manager") as any, PerformanceController.getTeamGoals as any);
 router.post("/goals", PerformanceController.createGoal as any);
 router.put("/goals/:id", PerformanceController.updateGoal as any);
 router.delete("/goals/:id", PerformanceController.deleteGoal as any);
+router.post("/goals/:id/check-in", PerformanceController.addCheckIn as any);
+router.put("/goals/:id/milestones/:milestoneId/toggle", PerformanceController.toggleMilestone as any);
 
 // Reviews
 router.get("/reviews/my", PerformanceController.getMyReviews as any);
