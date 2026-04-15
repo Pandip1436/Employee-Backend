@@ -12,7 +12,8 @@ export class EmployeeProfileController {
 
   static async getByUserId(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      const profile = await EmployeeProfileService.getByUserId(req.params.id as string, false);
+      // Admin/manager viewing another employee — return unmasked sensitive fields
+      const profile = await EmployeeProfileService.getByUserId(req.params.id as string, true);
       res.status(200).json({ success: true, message: "Profile fetched.", data: profile });
     } catch (error) { next(error); }
   }

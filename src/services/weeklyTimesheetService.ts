@@ -140,7 +140,7 @@ export class WeeklyTimesheetService {
   static async getMissingSubmissions(weekStart: string) {
     const { weekStart: ws, weekEnd: we } = this.getWeekRange(weekStart);
     const User = (await import("../models/User")).default;
-    const allUsers = await User.find({ isActive: true }).select("name email department").lean();
+    const allUsers = await User.find({ isActive: true, role: { $ne: "admin" } }).select("name email department").lean();
     const submitted = await WeeklyTimesheet.find({ weekStart: { $gte: ws, $lte: we }, status: { $ne: "draft" } }).select("userId").lean();
     const submittedIds = new Set(submitted.map((s) => s.userId.toString()));
     return allUsers.filter((u) => !submittedIds.has(u._id.toString()));
@@ -169,7 +169,7 @@ export class WeeklyTimesheetService {
     const User = (await import("../models/User")).default;
     const { EmailService } = await import("./emailService");
 
-    const allUsers = await User.find({ isActive: true }).select("name email").lean();
+    const allUsers = await User.find({ isActive: true, role: { $ne: "admin" } }).select("name email").lean();
     const submitted = await WeeklyTimesheet.find({ weekStart, status: { $ne: "draft" } }).select("userId").lean();
     const submittedIds = new Set(submitted.map((s) => s.userId.toString()));
     const missing = allUsers.filter((u) => !submittedIds.has(u._id.toString()));
@@ -187,7 +187,7 @@ export class WeeklyTimesheetService {
    */
   static async getCompliance(weeks = 8) {
     const User = (await import("../models/User")).default;
-    const allUsers = await User.find({ isActive: true }).select("name email department").lean();
+    const allUsers = await User.find({ isActive: true, role: { $ne: "admin" } }).select("name email department").lean();
 
     const now = new Date();
     const weekRanges: { start: Date; end: Date }[] = [];

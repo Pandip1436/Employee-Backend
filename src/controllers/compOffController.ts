@@ -46,8 +46,8 @@ export class CompOffController {
 
   static async approve(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { status } = req.body;
-      const compOff = await CompOffService.approve(req.params.id as string, req.user!._id.toString(), status);
+      const { status, rejectionComment } = req.body;
+      const compOff = await CompOffService.approve(req.params.id as string, req.user!._id.toString(), status, rejectionComment);
       if (compOff) {
         NotificationService.create({
           recipient: (compOff as any).userId,

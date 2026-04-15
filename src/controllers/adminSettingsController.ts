@@ -16,6 +16,22 @@ export class AdminSettingsController {
   static async getCompanySettings(_req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try { res.json({ success: true, data: await getSettings() }); } catch (e) { next(e); }
   }
+  // Public (no-auth) lite read used by login page, sidebar, browser tab etc.
+  static async getPublicCompanyInfo(_req: any, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const s = await getSettings();
+      res.json({
+        success: true,
+        data: {
+          companyName: s.companyName,
+          logo: s.logo,
+          timezone: s.timezone,
+          fiscalYearStart: s.fiscalYearStart,
+          workingDays: s.workingDays,
+        },
+      });
+    } catch (e) { next(e); }
+  }
   static async updateCompanySettings(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       await getSettings();

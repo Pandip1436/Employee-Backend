@@ -63,9 +63,12 @@ export class DashboardService {
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const yearStart = new Date(now.getFullYear(), 0, 1);
 
-    const [totalEmployees, activeEmployees, newJoiners, leaveStats, todayPresent] = await Promise.all([
+    // Admins are not required to mark attendance — exclude them from attendance totals
+    const nonAdminFilter = { role: { $ne: "admin" } } as const;
+    const [totalEmployees, activeEmployees, trackedEmployees, newJoiners, leaveStats, todayPresent] = await Promise.all([
       User.countDocuments(),
       User.countDocuments({ isActive: true }),
+      User.countDocuments({ isActive: true, ...nonAdminFilter }),
       User.find({ createdAt: { $gte: monthStart }, isActive: true }).select("name email department createdAt").sort("-createdAt").limit(10).lean(),
       Leave.aggregate([
         { $match: { status: "approved", startDate: { $gte: yearStart } } },
@@ -81,7 +84,7 @@ export class DashboardService {
       newJoinersThisMonth: newJoiners,
       leaveStats,
       todayPresent,
-      todayAbsent: activeEmployees - todayPresent,
+      todayAbsent: Math.max(0, trackedEmployees - todayPresent),
       attritionRate: totalEmployees > 0 ? parseFloat(((totalEmployees - activeEmployees) / totalEmployees * 100).toFixed(1)) : 0,
     };
   }

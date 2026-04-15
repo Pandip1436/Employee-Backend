@@ -44,6 +44,10 @@ router.use("/dashboard", dashboardRoutes);
 router.use("/announcements", announcementRoutes);
 router.use("/recognition", recognitionRoutes);
 router.use("/surveys", surveyRoutes);
+// Public lite company info (used by login/sidebar/page title — no auth required)
+import { AdminSettingsController } from "../controllers/adminSettingsController";
+router.get("/company-info", AdminSettingsController.getPublicCompanyInfo as any);
+
 router.use("/admin/settings", adminSettingsRoutes);
 router.use("/performance", performanceRoutes);
 router.use("/learning", learningRoutes);

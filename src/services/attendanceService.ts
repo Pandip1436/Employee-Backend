@@ -84,7 +84,7 @@ export class AttendanceService {
 
     if (record.totalHours < 4) {
       record.status = "absent";
-    } else if (record.totalHours < 8) {
+    } else if (record.totalHours <= 6) {
       record.status = "half-day";
     }
 
@@ -141,9 +141,9 @@ export class AttendanceService {
       .populate("userId", "name email department role")
       .lean();
 
-    // All active users
+    // All active users excluding admins (admins are not required to mark attendance)
     const User = (await import("../models/User")).default;
-    const allUsers = await User.find({ isActive: true }).select("name email department role").lean();
+    const allUsers = await User.find({ isActive: true, role: { $ne: "admin" } }).select("name email department role").lean();
 
     const clockedInMap = new Map(
       records.map((r) => [(r.userId as any)._id.toString(), r])
