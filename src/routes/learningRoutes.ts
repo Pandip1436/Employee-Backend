@@ -8,6 +8,7 @@ router.use(authenticate as any);
 
 // Courses
 router.get("/courses", LearningController.getCourses as any);
+router.get("/courses/:id", LearningController.getCourseById as any);
 router.post("/courses", authorize("admin", "manager") as any, LearningController.createCourse as any);
 router.put("/courses/:id", authorize("admin", "manager") as any, LearningController.updateCourse as any);
 router.delete("/courses/:id", authorize("admin") as any, LearningController.deleteCourse as any);

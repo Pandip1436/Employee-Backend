@@ -15,6 +15,16 @@ export class LearningController {
       res.json({ success: true, data: courses });
     } catch (e) { next(e); }
   }
+  static async getCourseById(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const course = await Course.findById(req.params.id)
+        .populate("createdBy", "name")
+        .populate("enrolledUsers", "name email department")
+        .populate("completedUsers", "name email department");
+      if (!course) { res.status(404).json({ success: false, message: "Course not found" }); return; }
+      res.json({ success: true, data: course });
+    } catch (e) { next(e); }
+  }
   static async createCourse(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const course = await Course.create({ ...req.body, createdBy: req.user!._id });
