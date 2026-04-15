@@ -11,6 +11,7 @@ router.use(authenticate as any);
 router.get("/current", WeeklyTimesheetController.getCurrentWeek as any);
 router.post("/save", WeeklyTimesheetController.saveEntries as any);
 router.patch("/:id/submit", WeeklyTimesheetController.submit as any);
+router.delete("/:id", WeeklyTimesheetController.deleteOwn as any);
 router.get("/history", WeeklyTimesheetController.getMyHistory as any);
 router.get("/detail/:id", WeeklyTimesheetController.getById as any);
 

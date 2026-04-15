@@ -32,6 +32,20 @@ export class WeeklyTimesheetController {
     } catch (e) { next(e); }
   }
 
+  static async deleteOwn(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      await WeeklyTimesheetService.deleteOwn(req.params.id as string, req.user!._id.toString());
+      AuditService.log({
+        userId: req.user!._id.toString(),
+        action: "Timesheet deleted",
+        module: "timesheet",
+        details: `Weekly timesheet ${req.params.id}`,
+        ipAddress: req.ip,
+      });
+      res.json({ success: true, message: "Timesheet deleted." });
+    } catch (e) { next(e); }
+  }
+
   static async getById(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const sheet = await WeeklyTimesheetService.getById(req.params.id as string);

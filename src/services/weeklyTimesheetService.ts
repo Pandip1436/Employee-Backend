@@ -70,6 +70,16 @@ export class WeeklyTimesheetService {
     return sheet;
   }
 
+  static async deleteOwn(weekId: string, userId: string) {
+    const sheet = await WeeklyTimesheet.findById(weekId);
+    if (!sheet) throw new ApiError(404, "Timesheet not found.");
+    if (sheet.userId.toString() !== userId) throw new ApiError(403, "Not your timesheet.");
+    if (sheet.status !== "draft" && sheet.status !== "rejected") {
+      throw new ApiError(400, "Only draft or rejected timesheets can be deleted.");
+    }
+    await WeeklyTimesheet.findByIdAndDelete(weekId);
+  }
+
   static async getById(weekId: string) {
     const sheet = await WeeklyTimesheet.findById(weekId)
       .populate("entries.projectId", "name client")
