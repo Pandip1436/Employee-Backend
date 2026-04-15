@@ -22,6 +22,7 @@ import performanceRoutes from "./performanceRoutes";
 import learningRoutes from "./learningRoutes";
 import dailyUpdateRoutes from "./dailyUpdateRoutes";
 import chatRoutes from "./chatRoutes";
+import notificationRoutes from "./notificationRoutes";
 
 const router = Router();
 
@@ -48,5 +49,6 @@ router.use("/performance", performanceRoutes);
 router.use("/learning", learningRoutes);
 router.use("/daily-updates", dailyUpdateRoutes);
 router.use("/chat", chatRoutes);
+router.use("/notifications", notificationRoutes);
 
 export default router;

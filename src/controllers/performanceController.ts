@@ -6,6 +6,7 @@ import PIP from "../models/PIP";
 import ReviewCycle from "../models/ReviewCycle";
 import { AuthRequest } from "../types";
 import { parsePagination } from "../utils/helpers";
+import { NotificationService } from "../services/notificationService";
 
 export class PerformanceController {
   // ── Goals ──
@@ -25,6 +26,18 @@ export class PerformanceController {
   static async createGoal(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const goal = await Goal.create({ ...req.body, userId: req.user!._id });
+      if (req.body.userId && req.body.userId.toString() !== req.user!._id.toString()) {
+        NotificationService.create({
+          recipient: req.body.userId,
+          sender: req.user!._id,
+          type: "system",
+          title: "New goal assigned",
+          message: `${req.user!.name} assigned you a goal: ${goal.title || ""}`,
+          link: "/performance/goals",
+          entityType: "Goal",
+          entityId: goal._id,
+        }).catch(() => {});
+      }
       res.status(201).json({ success: true, data: goal });
     } catch (e) { next(e); }
   }
@@ -133,12 +146,36 @@ export class PerformanceController {
   static async submitSelfReview(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const review = await Review.findByIdAndUpdate(req.params.id as string, { ...req.body, selfSubmittedAt: new Date(), status: "self-done" }, { new: true });
+      if (review && (review as any).managerId) {
+        NotificationService.create({
+          recipient: (review as any).managerId,
+          sender: req.user!._id,
+          type: "system",
+          title: "Self-review submitted",
+          message: `${req.user!.name} submitted their self-review`,
+          link: `/performance/reviews/${review._id}/mgr`,
+          entityType: "Review",
+          entityId: review._id,
+        }).catch(() => {});
+      }
       res.json({ success: true, data: review });
     } catch (e) { next(e); }
   }
   static async submitManagerReview(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const review = await Review.findByIdAndUpdate(req.params.id as string, { ...req.body, managerSubmittedAt: new Date(), status: "mgr-done" }, { new: true });
+      if (review && (review as any).employeeId) {
+        NotificationService.create({
+          recipient: (review as any).employeeId,
+          sender: req.user!._id,
+          type: "system",
+          title: "Manager review completed",
+          message: `${req.user!.name} completed your performance review`,
+          link: "/performance/reviews/my",
+          entityType: "Review",
+          entityId: review._id,
+        }).catch(() => {});
+      }
       res.json({ success: true, data: review });
     } catch (e) { next(e); }
   }
@@ -159,6 +196,20 @@ export class PerformanceController {
   static async giveFeedback(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const fb = await FeedbackModel.create({ ...req.body, fromUser: req.body.anonymous ? undefined : req.user!._id });
+      if (req.body.toUser && req.body.toUser.toString() !== req.user!._id.toString()) {
+        NotificationService.create({
+          recipient: req.body.toUser,
+          sender: req.body.anonymous ? undefined : req.user!._id,
+          type: "system",
+          title: "New feedback received",
+          message: req.body.anonymous
+            ? "You received anonymous feedback"
+            : `${req.user!.name} shared feedback with you`,
+          link: "/performance/feedback",
+          entityType: "Feedback",
+          entityId: fb._id,
+        }).catch(() => {});
+      }
       res.status(201).json({ success: true, data: fb });
     } catch (e) { next(e); }
   }
@@ -185,6 +236,18 @@ export class PerformanceController {
   static async createPIP(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const pip = await PIP.create({ ...req.body, managerId: req.user!._id });
+      if ((pip as any).employeeId) {
+        NotificationService.create({
+          recipient: (pip as any).employeeId,
+          sender: req.user!._id,
+          type: "system",
+          title: "Performance improvement plan",
+          message: "A Performance Improvement Plan has been created for you. Please review.",
+          link: `/performance/pip/${pip._id}`,
+          entityType: "PIP",
+          entityId: pip._id,
+        }).catch(() => {});
+      }
       res.status(201).json({ success: true, data: pip });
     } catch (e) { next(e); }
   }
@@ -208,6 +271,18 @@ export class PerformanceController {
   static async createCycle(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const cycle = await ReviewCycle.create({ ...req.body, createdBy: req.user!._id });
+      NotificationService.notifyAll(
+        {
+          sender: req.user!._id,
+          type: "system",
+          title: "New review cycle started",
+          message: (cycle as any).name || "A new performance review cycle has been started",
+          link: "/performance/reviews/my",
+          entityType: "ReviewCycle",
+          entityId: cycle._id,
+        },
+        req.user!._id
+      ).catch(() => {});
       res.status(201).json({ success: true, data: cycle });
     } catch (e) { next(e); }
   }

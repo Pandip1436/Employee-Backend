@@ -1,6 +1,7 @@
 import { Response, NextFunction } from "express";
 import Survey from "../models/Survey";
 import { AuthRequest } from "../types";
+import { NotificationService } from "../services/notificationService";
 
 export class SurveyController {
   static async getAll(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
@@ -27,6 +28,18 @@ export class SurveyController {
   static async create(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const survey = await Survey.create({ ...req.body, createdBy: req.user!._id });
+      NotificationService.notifyAll(
+        {
+          sender: req.user!._id,
+          type: "system",
+          title: "New survey available",
+          message: survey.title || "Please take a moment to respond",
+          link: `/surveys/${survey._id}`,
+          entityType: "Survey",
+          entityId: survey._id,
+        },
+        req.user!._id
+      ).catch(() => {});
       res.status(201).json({ success: true, data: survey });
     } catch (e) { next(e); }
   }

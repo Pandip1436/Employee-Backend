@@ -1,6 +1,7 @@
 import { Response, NextFunction } from "express";
 import { LeaveService } from "../services/leaveService";
 import { AuditService } from "../services/auditService";
+import { NotificationService } from "../services/notificationService";
 import { AuthRequest } from "../types";
 
 export class LeaveController {
@@ -14,6 +15,18 @@ export class LeaveController {
         details: `${req.body.type} leave: ${req.body.startDate} to ${req.body.endDate}`,
         ipAddress: req.ip,
       });
+      NotificationService.notifyApprovers(
+        {
+          sender: req.user!._id,
+          type: "leave",
+          title: "New leave request",
+          message: `${req.user!.name} applied for ${req.body.type} leave (${req.body.startDate} to ${req.body.endDate})`,
+          link: "/leave/approvals",
+          entityType: "Leave",
+          entityId: (leave as any)._id,
+        },
+        req.user!._id
+      ).catch(() => {});
       res.status(201).json({ success: true, message: "Leave applied successfully.", data: leave });
     } catch (error) { next(error); }
   }
@@ -58,6 +71,19 @@ export class LeaveController {
         details: rejectionComment ? `Reason: ${rejectionComment}` : undefined,
         ipAddress: req.ip,
       });
+      NotificationService.create({
+        recipient: (leave as any).userId,
+        sender: req.user!._id,
+        type: "leave",
+        title: `Leave ${status}`,
+        message:
+          status === "rejected" && rejectionComment
+            ? `Your leave was rejected. Reason: ${rejectionComment}`
+            : `Your leave request was ${status}.`,
+        link: "/leaves",
+        entityType: "Leave",
+        entityId: (leave as any)._id,
+      }).catch(() => {});
       res.status(200).json({ success: true, message: `Leave ${status}.`, data: leave });
     } catch (error) { next(error); }
   }

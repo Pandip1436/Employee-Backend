@@ -2,6 +2,7 @@ import { Response, NextFunction } from "express";
 import Announcement from "../models/Announcement";
 import { AuthRequest } from "../types";
 import { parsePagination } from "../utils/helpers";
+import { NotificationService } from "../services/notificationService";
 
 export class AnnouncementController {
   static async getAll(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
@@ -31,6 +32,20 @@ export class AnnouncementController {
   static async create(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const ann = await Announcement.create({ ...req.body, author: req.user!._id });
+      if (ann.isPublished) {
+        NotificationService.notifyAll(
+          {
+            sender: req.user!._id,
+            type: "announcement",
+            title: "New announcement",
+            message: ann.title,
+            link: `/announcements/${ann._id}`,
+            entityType: "Announcement",
+            entityId: ann._id,
+          },
+          req.user!._id
+        ).catch(() => {});
+      }
       res.status(201).json({ success: true, data: ann });
     } catch (e) { next(e); }
   }

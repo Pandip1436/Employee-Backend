@@ -2,6 +2,7 @@ import { Response, NextFunction } from "express";
 import Recognition from "../models/Recognition";
 import { AuthRequest } from "../types";
 import { parsePagination } from "../utils/helpers";
+import { NotificationService } from "../services/notificationService";
 
 export class RecognitionController {
   static async getAll(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
@@ -19,6 +20,18 @@ export class RecognitionController {
     try {
       const rec = await Recognition.create({ ...req.body, fromUser: req.user!._id });
       const populated = await Recognition.findById(rec._id).populate("fromUser", "name email").populate("toUser", "name email");
+      if (req.body.toUser && req.body.toUser.toString() !== req.user!._id.toString()) {
+        NotificationService.create({
+          recipient: req.body.toUser,
+          sender: req.user!._id,
+          type: "recognition",
+          title: "You received recognition!",
+          message: `${req.user!.name} recognized you${req.body.message ? `: ${String(req.body.message).slice(0, 120)}` : ""}`,
+          link: "/recognition",
+          entityType: "Recognition",
+          entityId: rec._id,
+        }).catch(() => {});
+      }
       res.status(201).json({ success: true, data: populated });
     } catch (e) { next(e); }
   }

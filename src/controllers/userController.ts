@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { UserService } from "../services/userService";
 import { AuditService } from "../services/auditService";
+import { NotificationService } from "../services/notificationService";
 import { AuthRequest } from "../types";
 
 export class UserController {
@@ -52,6 +53,34 @@ export class UserController {
         details: `Target: ${user.email} — fields: ${Object.keys(req.body).join(", ")}`,
         ipAddress: req.ip,
       });
+      if (req.user && user._id.toString() !== req.user._id.toString()) {
+        if (Object.prototype.hasOwnProperty.call(req.body, "isActive")) {
+          NotificationService.create({
+            recipient: user._id,
+            sender: req.user._id,
+            type: "system",
+            title: req.body.isActive ? "Account reactivated" : "Account deactivated",
+            message: req.body.isActive
+              ? "Your account has been reactivated."
+              : "Your account has been deactivated.",
+            link: "/profile",
+            entityType: "User",
+            entityId: user._id,
+          }).catch(() => {});
+        }
+        if (req.body.role) {
+          NotificationService.create({
+            recipient: user._id,
+            sender: req.user._id,
+            type: "system",
+            title: "Your role was updated",
+            message: `Your role is now "${req.body.role}".`,
+            link: "/profile",
+            entityType: "User",
+            entityId: user._id,
+          }).catch(() => {});
+        }
+      }
       res.status(200).json({
         success: true,
         message: "User updated successfully.",

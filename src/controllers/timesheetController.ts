@@ -1,5 +1,6 @@
 import { Response, NextFunction } from "express";
 import { TimesheetService } from "../services/timesheetService";
+import { NotificationService } from "../services/notificationService";
 import { AuthRequest } from "../types";
 
 export class TimesheetController {
@@ -112,6 +113,18 @@ export class TimesheetController {
         req.params.id as string,
         req.user!._id.toString()
       );
+      NotificationService.notifyApprovers(
+        {
+          sender: req.user!._id,
+          type: "timesheet",
+          title: "Timesheet submitted",
+          message: `${req.user!.name} submitted a timesheet for approval`,
+          link: "/timesheet/approvals",
+          entityType: "Timesheet",
+          entityId: (timesheet as any)?._id,
+        },
+        req.user!._id
+      ).catch(() => {});
       res.status(200).json({
         success: true,
         message: "Timesheet submitted for approval.",
@@ -135,6 +148,21 @@ export class TimesheetController {
         status,
         rejectionComment
       );
+      if (timesheet) {
+        NotificationService.create({
+          recipient: (timesheet as any).userId,
+          sender: req.user!._id,
+          type: "timesheet",
+          title: `Timesheet ${status}`,
+          message:
+            status === "rejected" && rejectionComment
+              ? `Your timesheet was rejected. Reason: ${rejectionComment}`
+              : `Your timesheet was ${status}.`,
+          link: "/timesheet/history",
+          entityType: "Timesheet",
+          entityId: (timesheet as any)._id,
+        }).catch(() => {});
+      }
       res.status(200).json({
         success: true,
         message: `Timesheet ${status}.`,

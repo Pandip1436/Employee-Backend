@@ -3,6 +3,7 @@ import Course from "../models/Course";
 import Certification from "../models/Certification";
 import Training from "../models/Training";
 import { AuthRequest } from "../types";
+import { NotificationService } from "../services/notificationService";
 
 export class LearningController {
   // ── Courses ──
@@ -28,6 +29,18 @@ export class LearningController {
   static async createCourse(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const course = await Course.create({ ...req.body, createdBy: req.user!._id });
+      NotificationService.notifyAll(
+        {
+          sender: req.user!._id,
+          type: "system",
+          title: "New course available",
+          message: (course as any).title || "Check out the new course on Learning Hub",
+          link: `/learning/courses/${course._id}`,
+          entityType: "Course",
+          entityId: course._id,
+        },
+        req.user!._id
+      ).catch(() => {});
       res.status(201).json({ success: true, data: course });
     } catch (e) { next(e); }
   }
@@ -77,6 +90,18 @@ export class LearningController {
   static async createTraining(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const training = await Training.create({ ...req.body, conductedBy: req.user!._id });
+      NotificationService.notifyAll(
+        {
+          sender: req.user!._id,
+          type: "system",
+          title: "New training scheduled",
+          message: `${(training as any).title || "Training"} — ${new Date((training as any).date).toLocaleDateString()}`,
+          link: "/learning/calendar",
+          entityType: "Training",
+          entityId: training._id,
+        },
+        req.user!._id
+      ).catch(() => {});
       res.status(201).json({ success: true, data: training });
     } catch (e) { next(e); }
   }

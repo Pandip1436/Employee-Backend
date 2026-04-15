@@ -1,11 +1,24 @@
 import { Response, NextFunction } from "express";
 import { HolidayService } from "../services/holidayService";
+import { NotificationService } from "../services/notificationService";
 import { AuthRequest } from "../types";
 
 export class HolidayController {
   static async create(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const holiday = await HolidayService.create(req.body);
+      NotificationService.notifyAll(
+        {
+          sender: req.user?._id,
+          type: "system",
+          title: "New holiday added",
+          message: `${(holiday as any).name || "Holiday"} — ${new Date((holiday as any).date).toLocaleDateString()}`,
+          link: "/attendance/holidays",
+          entityType: "Holiday",
+          entityId: (holiday as any)._id,
+        },
+        req.user?._id
+      ).catch(() => {});
       res.status(201).json({ success: true, message: "Holiday created.", data: holiday });
     } catch (error) { next(error); }
   }

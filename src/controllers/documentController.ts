@@ -1,6 +1,7 @@
 import { Response, NextFunction } from "express";
 import { DocumentService } from "../services/documentService";
 import { AuditService } from "../services/auditService";
+import { NotificationService } from "../services/notificationService";
 import { AuthRequest } from "../types";
 import { ApiError } from "../utils/ApiError";
 import path from "path";
@@ -31,6 +32,21 @@ export class DocumentController {
         details: `${doc.name} (${(doc.size / 1024).toFixed(1)} KB)`,
         ipAddress: req.ip,
       });
+
+      if ((doc as any).access === "public") {
+        NotificationService.notifyAll(
+          {
+            sender: req.user!._id,
+            type: "document",
+            title: "New document available",
+            message: doc.name,
+            link: "/documents",
+            entityType: "Document",
+            entityId: (doc as any)._id,
+          },
+          req.user!._id
+        ).catch(() => {});
+      }
 
       res.status(201).json({ success: true, message: "Document uploaded.", data: doc });
     } catch (error) { next(error); }

@@ -1,5 +1,6 @@
 import { Response, NextFunction } from "express";
 import { ChatService } from "../services/chatService";
+import { NotificationService } from "../services/notificationService";
 import { AuthRequest } from "../types";
 
 export class ChatController {
@@ -34,6 +35,23 @@ export class ChatController {
         req.body.name,
         req.body.participants
       );
+      const recipients: string[] = (req.body.participants || []).filter(
+        (id: string) => id && id.toString() !== req.user!._id.toString()
+      );
+      if (recipients.length) {
+        NotificationService.createMany(
+          recipients.map((rid) => ({
+            recipient: rid,
+            sender: req.user!._id,
+            type: "chat",
+            title: "Added to group chat",
+            message: `${req.user!.name} added you to "${req.body.name}"`,
+            link: "/chat",
+            entityType: "Conversation",
+            entityId: (conversation as any)?._id,
+          }))
+        ).catch(() => {});
+      }
       res.status(201).json({
         success: true,
         message: "Group conversation created successfully.",
@@ -116,6 +134,23 @@ export class ChatController {
         req.user!._id.toString(),
         req.body.participants
       );
+      const added: string[] = (req.body.participants || []).filter(
+        (id: string) => id && id.toString() !== req.user!._id.toString()
+      );
+      if (added.length) {
+        NotificationService.createMany(
+          added.map((rid) => ({
+            recipient: rid,
+            sender: req.user!._id,
+            type: "chat",
+            title: "Added to group chat",
+            message: `${req.user!.name} added you to "${(conversation as any)?.name || "a chat"}"`,
+            link: "/chat",
+            entityType: "Conversation",
+            entityId: (conversation as any)?._id,
+          }))
+        ).catch(() => {});
+      }
       res.status(200).json({
         success: true,
         message: "Participants added successfully.",

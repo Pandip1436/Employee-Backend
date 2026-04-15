@@ -1,11 +1,24 @@
 import { Response, NextFunction } from "express";
 import { CompOffService } from "../services/compOffService";
+import { NotificationService } from "../services/notificationService";
 import { AuthRequest } from "../types";
 
 export class CompOffController {
   static async apply(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const compOff = await CompOffService.apply(req.user!._id.toString(), req.body);
+      NotificationService.notifyApprovers(
+        {
+          sender: req.user!._id,
+          type: "compoff",
+          title: "New comp-off request",
+          message: `${req.user!.name} submitted a comp-off request`,
+          link: "/compoff/approvals",
+          entityType: "CompOff",
+          entityId: (compOff as any)._id,
+        },
+        req.user!._id
+      ).catch(() => {});
       res.status(201).json({ success: true, message: "Comp-off request submitted.", data: compOff });
     } catch (error) { next(error); }
   }
@@ -35,6 +48,18 @@ export class CompOffController {
     try {
       const { status } = req.body;
       const compOff = await CompOffService.approve(req.params.id as string, req.user!._id.toString(), status);
+      if (compOff) {
+        NotificationService.create({
+          recipient: (compOff as any).userId,
+          sender: req.user!._id,
+          type: "compoff",
+          title: `Comp-off ${status}`,
+          message: `Your comp-off request was ${status}.`,
+          link: "/attendance/compoff",
+          entityType: "CompOff",
+          entityId: (compOff as any)._id,
+        }).catch(() => {});
+      }
       res.status(200).json({ success: true, message: `Comp-off ${status}.`, data: compOff });
     } catch (error) { next(error); }
   }
