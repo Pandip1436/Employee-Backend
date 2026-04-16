@@ -1,4 +1,5 @@
 import WeeklyTimesheet from "../models/WeeklyTimesheet";
+import User from "../models/User";
 import { ApiError } from "../utils/ApiError";
 import { parsePagination } from "../utils/helpers";
 
@@ -117,7 +118,13 @@ export class WeeklyTimesheetService {
     const { page, limit, skip } = parsePagination(query);
     const filter: Record<string, unknown> = {};
     if (query.status) filter.status = query.status;
-    if (query.userId) filter.userId = query.userId;
+    if (query.userId) {
+      filter.userId = query.userId;
+    } else {
+      // Exclude admin users — timesheet export/list is for the workforce only.
+      const adminIds = (await User.find({ role: "admin" }).select("_id").lean()).map((u) => u._id);
+      if (adminIds.length) filter.userId = { $nin: adminIds };
+    }
     const [data, total] = await Promise.all([
       WeeklyTimesheet.find(filter).populate("userId", "name email department").populate("entries.projectId", "name client").populate("approvedBy", "name").sort("-weekStart").skip(skip).limit(limit),
       WeeklyTimesheet.countDocuments(filter),

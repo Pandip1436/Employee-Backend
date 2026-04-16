@@ -16,6 +16,13 @@ const userSchema = new Schema(
       lowercase: true,
       trim: true,
     },
+    userId: {
+      type: String,
+      unique: true,
+      sparse: true,
+      lowercase: true,
+      trim: true,
+    },
     password: {
       type: String,
       required: true,
@@ -38,6 +45,9 @@ const userSchema = new Schema(
     activeToken: {
       type: String,
       select: false,
+    },
+    lastLoginAt: {
+      type: Date,
     },
   },
   { timestamps: true }

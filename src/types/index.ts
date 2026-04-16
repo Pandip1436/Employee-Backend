@@ -8,11 +8,13 @@ export interface IUser extends Document {
   _id: Types.ObjectId;
   name: string;
   email: string;
+  userId?: string;
   password: string;
   role: UserRole;
   department?: string;
   isActive: boolean;
   activeToken?: string;
+  lastLoginAt?: Date;
   createdAt: Date;
   updatedAt: Date;
   comparePassword(candidatePassword: string): Promise<boolean>;

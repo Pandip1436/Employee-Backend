@@ -50,7 +50,7 @@ export class DashboardService {
     const [pendingLeaves, pendingTimesheets, totalEmployees, todayPresent] = await Promise.all([
       Leave.countDocuments({ status: "pending" }),
       WeeklyTimesheet.countDocuments({ status: "submitted" }),
-      User.countDocuments({ isActive: true }),
+      User.countDocuments({ isActive: true, role: { $ne: "admin" } }),
       Attendance.countDocuments({ date: new Date(now.getFullYear(), now.getMonth(), now.getDate()), status: { $in: ["present", "late"] } }),
     ]);
 
@@ -63,13 +63,12 @@ export class DashboardService {
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const yearStart = new Date(now.getFullYear(), 0, 1);
 
-    // Admins are not required to mark attendance — exclude them from attendance totals
+    // HR dashboard counts the workforce only — admins are staff of the system, not part of the workforce metrics.
     const nonAdminFilter = { role: { $ne: "admin" } } as const;
-    const [totalEmployees, activeEmployees, trackedEmployees, newJoiners, leaveStats, todayPresent] = await Promise.all([
-      User.countDocuments(),
-      User.countDocuments({ isActive: true }),
+    const [totalEmployees, activeEmployees, newJoiners, leaveStats, todayPresent] = await Promise.all([
+      User.countDocuments(nonAdminFilter),
       User.countDocuments({ isActive: true, ...nonAdminFilter }),
-      User.find({ createdAt: { $gte: monthStart }, isActive: true }).select("name email department createdAt").sort("-createdAt").limit(10).lean(),
+      User.find({ createdAt: { $gte: monthStart }, isActive: true, ...nonAdminFilter }).select("name email department createdAt").sort("-createdAt").limit(10).lean(),
       Leave.aggregate([
         { $match: { status: "approved", startDate: { $gte: yearStart } } },
         { $group: { _id: "$type", totalDays: { $sum: "$days" }, count: { $sum: 1 } } },
@@ -84,7 +83,7 @@ export class DashboardService {
       newJoinersThisMonth: newJoiners,
       leaveStats,
       todayPresent,
-      todayAbsent: Math.max(0, trackedEmployees - todayPresent),
+      todayAbsent: Math.max(0, activeEmployees - todayPresent),
       attritionRate: totalEmployees > 0 ? parseFloat(((totalEmployees - activeEmployees) / totalEmployees * 100).toFixed(1)) : 0,
     };
   }
@@ -93,7 +92,7 @@ export class DashboardService {
   static async getUpcomingEvents() {
     // Use join dates as anniversaries
     const now = new Date();
-    const users = await User.find({ isActive: true }).select("name email department createdAt").lean();
+    const users = await User.find({ isActive: true, role: { $ne: "admin" } }).select("name email department createdAt").lean();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const nextWeek = new Date(today);
     nextWeek.setDate(today.getDate() + 14);

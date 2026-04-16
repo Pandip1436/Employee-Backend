@@ -1,6 +1,7 @@
 import { Response, NextFunction } from "express";
 import CompanySettings from "../models/CompanySettings";
 import AuditLog from "../models/AuditLog";
+import User from "../models/User";
 import { AuditService } from "../services/auditService";
 import { AuthRequest } from "../types";
 import { parsePagination } from "../utils/helpers";
@@ -51,6 +52,36 @@ export class AdminSettingsController {
     } catch (e) { next(e); }
   }
 
+  // Departments
+  static async getDepartments(_req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try { const s = await getSettings(); res.json({ success: true, data: (s as any).departments || [] }); } catch (e) { next(e); }
+  }
+  static async updateDepartments(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      await getSettings();
+      const raw = Array.isArray(req.body.departments) ? req.body.departments : [];
+      const departments = raw
+        .map((d: any) => ({
+          name: String(d?.name || "").trim(),
+          description: String(d?.description || "").trim(),
+        }))
+        .filter((d: any) => d.name);
+      const updated = await CompanySettings.findOneAndUpdate(
+        {},
+        { $set: { departments } },
+        { new: true, upsert: true }
+      );
+      AuditService.log({
+        userId: req.user!._id.toString(),
+        action: "Departments updated",
+        module: "settings",
+        details: `${departments.length} departments`,
+        ipAddress: req.ip,
+      });
+      res.json({ success: true, data: (updated as any)?.departments });
+    } catch (e) { next(e); }
+  }
+
   // Designations
   static async getDesignations(_req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try { const s = await getSettings(); res.json({ success: true, data: s.designations }); } catch (e) { next(e); }
@@ -78,6 +109,23 @@ export class AdminSettingsController {
   // Roles & Permissions
   static async getRoles(_req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try { const s = await getSettings(); res.json({ success: true, data: s.roles }); } catch (e) { next(e); }
+  }
+  static async getRoleUserCounts(_req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const s = await getSettings();
+      const names = (s.roles || []).map((r: any) => String(r.name || ""));
+      const counts: Record<string, number> = {};
+      await Promise.all(
+        names.map(async (name) => {
+          if (!name) return;
+          counts[name] = await User.countDocuments({
+            role: { $regex: `^${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, $options: "i" },
+            isActive: true,
+          });
+        })
+      );
+      res.json({ success: true, data: counts });
+    } catch (e) { next(e); }
   }
   static async updateRoles(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {

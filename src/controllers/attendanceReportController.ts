@@ -15,28 +15,78 @@ function formatDate(date: Date | string): string {
   return new Date(date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 }
 
+type Period = "daily" | "weekly" | "monthly";
+
+// Resolve the (startDate, endDate, label, filenameSuffix) for the requested period.
+// Supports the legacy `month=YYYY-MM` param and the new `period` + `date` params.
+function resolveRange(q: any): { startDate: Date; endDate: Date; period: Period; label: string; fileTag: string } {
+  const period = (q.period as Period) || (q.month ? "monthly" : undefined);
+  if (!period) throw new ApiError(400, "period is required (daily | weekly | monthly)");
+
+  if (period === "monthly") {
+    const month = (q.month as string) || (q.date as string);
+    if (!month) throw new ApiError(400, "month (or date) is required for monthly report");
+    const [y, m] = month.split("-").map(Number);
+    if (!y || !m) throw new ApiError(400, "Invalid month format, expected YYYY-MM");
+    const start = new Date(y, m - 1, 1);
+    const end = new Date(y, m, 0, 23, 59, 59, 999);
+    const label = start.toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+    return { startDate: start, endDate: end, period, label, fileTag: `${y}-${String(m).padStart(2, "0")}` };
+  }
+
+  const date = q.date as string;
+  if (!date) throw new ApiError(400, "date is required (YYYY-MM-DD)");
+  const base = new Date(date);
+  if (isNaN(base.getTime())) throw new ApiError(400, "Invalid date format, expected YYYY-MM-DD");
+
+  if (period === "daily") {
+    const start = new Date(base.getFullYear(), base.getMonth(), base.getDate());
+    const end = new Date(base.getFullYear(), base.getMonth(), base.getDate(), 23, 59, 59, 999);
+    const label = start.toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" });
+    return { startDate: start, endDate: end, period, label, fileTag: date };
+  }
+
+  // weekly (Monday → Sunday containing the given date)
+  const dow = base.getDay(); // 0=Sun..6=Sat
+  const diffToMon = dow === 0 ? -6 : 1 - dow;
+  const start = new Date(base.getFullYear(), base.getMonth(), base.getDate() + diffToMon);
+  const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 6, 23, 59, 59, 999);
+  const fmt = (d: Date) => d.toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
+  const label = `${fmt(start)} → ${fmt(end)}, ${end.getFullYear()}`;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const fileTag = `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}_to_${end.getFullYear()}-${pad(end.getMonth() + 1)}-${pad(end.getDate())}`;
+  return { startDate: start, endDate: end, period, label, fileTag };
+}
+
+const periodTitle: Record<Period, string> = {
+  daily: "Daily",
+  weekly: "Weekly",
+  monthly: "Monthly",
+};
+
 export class AttendanceReportController {
-  // GET /attendance/report/monthly?month=2026-04&format=json
+  // GET /attendance/report/monthly?month=2026-04   (legacy, kept for compat)
+  // GET /attendance/report/monthly?period=weekly&date=2026-04-16
   static async getMonthlyReport(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      const month = req.query.month as string;
-      if (!month) throw new ApiError(400, "month query param is required (e.g. 2026-04)");
-
+      const { startDate, endDate, period, label } = resolveRange(req.query);
       const userId = req.user!.role === "employee" ? req.user!._id.toString() : (req.query.userId as string);
-      const report = await AttendanceService.getMonthlyReport(month, userId);
+      const base = await AttendanceService.getReportForRange(startDate, endDate, userId);
 
-      res.status(200).json({ success: true, message: "Monthly report generated.", data: report });
+      res.status(200).json({
+        success: true,
+        message: `${periodTitle[period]} report generated.`,
+        data: { ...base, period, label },
+      });
     } catch (error) { next(error); }
   }
 
-  // GET /attendance/report/export-excel?month=2026-04
+  // GET /attendance/report/export-excel?period=weekly&date=2026-04-16
   static async exportExcel(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      const month = req.query.month as string;
-      if (!month) throw new ApiError(400, "month query param is required");
-
+      const { startDate, endDate, period, label, fileTag } = resolveRange(req.query);
       const userId = req.user!.role === "employee" ? req.user!._id.toString() : (req.query.userId as string);
-      const report = await AttendanceService.getMonthlyReport(month, userId);
+      const report = await AttendanceService.getReportForRange(startDate, endDate, userId);
 
       const workbook = new ExcelJS.Workbook();
       workbook.creator = "United Nexa Tech";
@@ -117,32 +167,36 @@ export class AttendanceReportController {
       });
 
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-      res.setHeader("Content-Disposition", `attachment; filename=attendance-${month}.xlsx`);
+      res.setHeader("Content-Disposition", `attachment; filename=attendance-${period}-${fileTag}.xlsx`);
+
+      // Also title the summary sheet with the range label.
+      summary.insertRow(1, [`${periodTitle[period]} Attendance — ${label}`]);
+      summary.mergeCells(1, 1, 1, 8);
+      summary.getRow(1).font = { bold: true, size: 13 };
+      summary.getRow(1).alignment = { horizontal: "center" };
 
       await workbook.xlsx.write(res);
       res.end();
     } catch (error) { next(error); }
   }
 
-  // GET /attendance/report/export-pdf?month=2026-04
+  // GET /attendance/report/export-pdf?period=weekly&date=2026-04-16
   static async exportPdf(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      const month = req.query.month as string;
-      if (!month) throw new ApiError(400, "month query param is required");
-
+      const { startDate, endDate, period, label, fileTag } = resolveRange(req.query);
       const userId = req.user!.role === "employee" ? req.user!._id.toString() : (req.query.userId as string);
-      const report = await AttendanceService.getMonthlyReport(month, userId);
+      const report = await AttendanceService.getReportForRange(startDate, endDate, userId);
 
       const doc = new PDFDocument({ size: "A4", margin: 40 });
 
       res.setHeader("Content-Type", "application/pdf");
-      res.setHeader("Content-Disposition", `attachment; filename=attendance-${month}.pdf`);
+      res.setHeader("Content-Disposition", `attachment; filename=attendance-${period}-${fileTag}.pdf`);
       doc.pipe(res);
 
       // Header
       doc.rect(0, 0, 595.28, 70).fill("#4F46E5");
-      doc.fontSize(20).fillColor("#FFFFFF").text("Monthly Attendance Report", 40, 20);
-      doc.fontSize(11).text(`United Nexa Tech — ${report.month}`, 40, 45);
+      doc.fontSize(20).fillColor("#FFFFFF").text(`${periodTitle[period]} Attendance Report`, 40, 20);
+      doc.fontSize(11).text(`United Nexa Tech — ${label}`, 40, 45);
 
       doc.moveDown(2);
       let y = 90;

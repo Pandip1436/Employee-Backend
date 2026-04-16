@@ -25,5 +25,7 @@ router.post("/me/certificates", upload.array("files", 10), EmployeeProfileContro
 
 // Admin/Manager view any employee profile
 router.get("/:id", authorize("admin", "manager") as any, EmployeeProfileController.getByUserId as any);
+// Admin update any employee profile
+router.put("/:id", authorize("admin") as any, EmployeeProfileController.updateByUserId as any);
 
 export default router;

@@ -39,6 +39,30 @@ export class UserController {
     }
   }
 
+  static async create(
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const user = await UserService.create(req.body);
+      AuditService.log({
+        userId: req.user!._id.toString(),
+        action: "User created",
+        module: "employees",
+        details: `Created ${user.name} (userId: ${user.userId}, role: ${user.role})`,
+        ipAddress: req.ip,
+      });
+      res.status(201).json({
+        success: true,
+        message: "User created successfully.",
+        data: user,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async update(
     req: AuthRequest,
     res: Response,
@@ -86,6 +110,48 @@ export class UserController {
         message: "User updated successfully.",
         data: user,
       });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async bulkAction(
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> {
+    try {
+      const { ids, action } = req.body as { ids: string[]; action: "activate" | "deactivate" | "delete" };
+      const { affected } = await UserService.bulkAction(ids, action, req.user!._id.toString());
+      AuditService.log({
+        userId: req.user!._id.toString(),
+        action: `Bulk ${action}`,
+        module: "employees",
+        details: `${affected} user(s) ${action}d`,
+        ipAddress: req.ip,
+      });
+      res.status(200).json({ success: true, message: `${affected} user(s) ${action}d.` });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async resetPassword(
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const { password } = req.body;
+      await UserService.resetPassword(req.params.id as string, password);
+      AuditService.log({
+        userId: req.user!._id.toString(),
+        action: "Password reset by admin",
+        module: "employees",
+        details: `Target user ID: ${req.params.id}`,
+        ipAddress: req.ip,
+      });
+      res.status(200).json({ success: true, message: "Password reset successfully." });
     } catch (error) {
       next(error);
     }

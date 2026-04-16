@@ -18,6 +18,13 @@ export class EmployeeProfileController {
     } catch (error) { next(error); }
   }
 
+  static async updateByUserId(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const profile = await EmployeeProfileService.update(req.params.id as string, req.body);
+      res.status(200).json({ success: true, message: "Profile updated.", data: profile });
+    } catch (error) { next(error); }
+  }
+
   static async updateMyProfile(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const profile = await EmployeeProfileService.update(req.user!._id.toString(), req.body);

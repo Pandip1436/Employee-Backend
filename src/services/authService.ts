@@ -10,28 +10,6 @@ export class AuthService {
     } as jwt.SignOptions);
   }
 
-  static async register(data: {
-    name: string;
-    email: string;
-    password: string;
-    role?: string;
-    department?: string;
-  }): Promise<{ user: IUser; token: string }> {
-    const existingUser = await User.findOne({ email: data.email });
-    if (existingUser) {
-      throw new ApiError(409, "Email already registered.");
-    }
-
-    const user = await User.create(data);
-    const token = this.generateToken(user._id.toString());
-
-    // Store active token
-    user.activeToken = token;
-    await user.save();
-
-    return { user, token };
-  }
-
   static async updateProfile(
     userId: string,
     data: { name?: string; email?: string; department?: string }
@@ -61,24 +39,27 @@ export class AuthService {
   }
 
   static async login(
-    email: string,
+    userId: string,
     password: string
   ): Promise<{ user: IUser; token: string }> {
-    const user = await User.findOne({ email }).select("+password");
+    const normalized = String(userId || "").trim().toLowerCase();
+    const user = await User.findOne({ userId: normalized }).select("+password");
     if (!user || !user.isActive) {
-      throw new ApiError(401, "Invalid email or password.");
+      throw new ApiError(401, "Invalid user ID or password.");
     }
 
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
-      throw new ApiError(401, "Invalid email or password.");
+      throw new ApiError(401, "Invalid user ID or password.");
     }
 
     const token = this.generateToken(user._id.toString());
 
     // Store active token — invalidates any previous session
     user.activeToken = token;
-    await User.updateOne({ _id: user._id }, { activeToken: token });
+    const now = new Date();
+    user.lastLoginAt = now;
+    await User.updateOne({ _id: user._id }, { activeToken: token, lastLoginAt: now });
 
     return { user, token };
   }

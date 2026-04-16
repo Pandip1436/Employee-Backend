@@ -4,43 +4,19 @@ import { AuditService } from "../services/auditService";
 import { AuthRequest } from "../types";
 
 export class AuthController {
-  static async register(
-    req: Request,
-    res: Response,
-    next: NextFunction
-  ): Promise<void> {
-    try {
-      const { user, token } = await AuthService.register(req.body);
-      AuditService.log({
-        userId: user._id.toString(),
-        action: "User registered",
-        module: "auth",
-        details: `${user.name} (${user.email}) — role: ${user.role}`,
-        ipAddress: req.ip,
-      });
-      res.status(201).json({
-        success: true,
-        message: "User registered successfully.",
-        data: { user, token },
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
-
   static async login(
     req: Request,
     res: Response,
     next: NextFunction
   ): Promise<void> {
     try {
-      const { email, password } = req.body;
-      const { user, token } = await AuthService.login(email, password);
+      const { userId, password } = req.body;
+      const { user, token } = await AuthService.login(userId, password);
       AuditService.log({
         userId: user._id.toString(),
         action: "User logged in",
         module: "auth",
-        details: `${user.name} (${user.email})`,
+        details: `${user.name} (${user.userId})`,
         ipAddress: req.ip,
       });
       res.status(200).json({

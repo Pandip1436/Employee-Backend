@@ -1,4 +1,5 @@
 import Attendance, { IAttendance } from "../models/Attendance";
+import User from "../models/User";
 import { ApiError } from "../utils/ApiError";
 import { parsePagination } from "../utils/helpers";
 
@@ -212,22 +213,24 @@ export class AttendanceService {
     };
   }
 
-  static async getMonthlyReport(month: string, userId?: string) {
-    const [year, m] = month.split("-").map(Number);
-    const startDate = new Date(year, m - 1, 1);
-    const endDate = new Date(year, m, 0); // last day of month
-
+  // Generic range report. `startDate` and `endDate` are inclusive, local-time day boundaries.
+  // Admin users are excluded — reports are about the workforce, not system operators.
+  static async getReportForRange(startDate: Date, endDate: Date, userId?: string) {
     const filter: Record<string, unknown> = {
       date: { $gte: startDate, $lte: endDate },
     };
-    if (userId) filter.userId = userId;
+    if (userId) {
+      filter.userId = userId;
+    } else {
+      const adminIds = (await User.find({ role: "admin" }).select("_id").lean()).map((u) => u._id);
+      if (adminIds.length) filter.userId = { $nin: adminIds };
+    }
 
     const records = await Attendance.find(filter)
       .populate("userId", "name email department")
       .sort("date")
       .lean();
 
-    // Group by employee
     const grouped: Record<
       string,
       {
@@ -268,11 +271,18 @@ export class AttendanceService {
     }
 
     return {
-      month: `${year}-${String(m).padStart(2, "0")}`,
       startDate,
       endDate,
       employees: Object.values(grouped),
       allRecords: records,
     };
+  }
+
+  static async getMonthlyReport(month: string, userId?: string) {
+    const [year, m] = month.split("-").map(Number);
+    const startDate = new Date(year, m - 1, 1);
+    const endDate = new Date(year, m, 0); // last day of month
+    const base = await AttendanceService.getReportForRange(startDate, endDate, userId);
+    return { month: `${year}-${String(m).padStart(2, "0")}`, ...base };
   }
 }
