@@ -9,9 +9,9 @@ router.use(authenticate as any);
 // Courses
 router.get("/courses", LearningController.getCourses as any);
 router.get("/courses/:id", LearningController.getCourseById as any);
-router.post("/courses", authorize("admin", "manager") as any, LearningController.createCourse as any);
-router.put("/courses/:id", authorize("admin", "manager") as any, LearningController.updateCourse as any);
-router.delete("/courses/:id", authorize("admin") as any, LearningController.deleteCourse as any);
+router.post("/courses", LearningController.createCourse as any);
+router.put("/courses/:id", LearningController.updateCourse as any);
+router.delete("/courses/:id", LearningController.deleteCourse as any);
 router.post("/courses/:id/enroll", LearningController.enrollCourse as any);
 router.post("/courses/:id/complete", LearningController.completeCourse as any);
 
@@ -23,5 +23,8 @@ router.post("/certifications", LearningController.addCertification as any);
 router.get("/trainings", LearningController.getTrainings as any);
 router.post("/trainings", authorize("admin", "manager") as any, LearningController.createTraining as any);
 router.get("/calendar", LearningController.getCalendar as any);
+
+// Admin: all learners with enrollment details
+router.get("/learners", authorize("admin", "manager") as any, LearningController.getLearners as any);
 
 export default router;
