@@ -213,6 +213,43 @@ export class AttendanceService {
     };
   }
 
+  /**
+   * Auto clock-out: closes every open attendance record (clockIn exists, clockOut missing)
+   * for today's date. Sets clockOut to the given time and computes totalHours.
+   * Called by the 7 PM cron job.
+   */
+  static async autoClockOutAll() {
+    const today = this.getToday();
+    const autoTime = new Date(); // current server time = 7 PM when cron fires
+
+    const openRecords = await Attendance.find({
+      date: today,
+      clockIn: { $exists: true, $ne: null },
+      clockOut: null,
+    });
+
+    let count = 0;
+    for (const record of openRecords) {
+      record.clockOut = autoTime;
+      record.totalHours = parseFloat(
+        ((autoTime.getTime() - record.clockIn!.getTime()) / 3600000).toFixed(2)
+      );
+      if (record.totalHours < 4) {
+        record.status = "absent";
+      } else if (record.totalHours <= 6) {
+        record.status = "half-day";
+      }
+      record.notes = (record.notes ? record.notes + " | " : "") + "Auto clock-out at 7:00 PM";
+      await record.save();
+      count++;
+    }
+
+    if (count > 0) {
+      console.log(`[auto-clockout] Clocked out ${count} employee(s) at ${autoTime.toISOString()}`);
+    }
+    return count;
+  }
+
   // Generic range report. `startDate` and `endDate` are inclusive, local-time day boundaries.
   // Admin users are excluded — reports are about the workforce, not system operators.
   static async getReportForRange(startDate: Date, endDate: Date, userId?: string) {
