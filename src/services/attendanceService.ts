@@ -9,7 +9,7 @@ export class AttendanceService {
    * This ensures attendance records are bucketed by the user's calendar day,
    * not the server's local-time day (server may be in UTC).
    */
-  private static getToday(): Date {
+  static getToday(): Date {
     const tz = process.env.BUSINESS_TIMEZONE || "Asia/Kolkata";
     const now = new Date();
     // Format current instant as YYYY-MM-DD in the business timezone

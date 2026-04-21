@@ -3,13 +3,16 @@ import Attendance from "../models/Attendance";
 import Leave from "../models/Leave";
 import Holiday from "../models/Holiday";
 import WeeklyTimesheet from "../models/WeeklyTimesheet";
+import { AttendanceService } from "./attendanceService";
 
 export class DashboardService {
   // ── Employee KPIs ──
   static async getEmployeeKpis(userId: string) {
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    // Match the bucketing used when attendance rows are written (UTC midnight
+    // of the business-timezone calendar day), not the server's local midnight.
+    const today = AttendanceService.getToday();
 
     const [attendance, todayRecord, leaves, monthAttendance, holidays] = await Promise.all([
       Attendance.countDocuments({ userId, date: { $gte: monthStart }, status: { $in: ["present", "late"] } }),
@@ -51,7 +54,7 @@ export class DashboardService {
       Leave.countDocuments({ status: "pending" }),
       WeeklyTimesheet.countDocuments({ status: "submitted" }),
       User.countDocuments({ isActive: true, role: { $ne: "admin" } }),
-      Attendance.countDocuments({ date: new Date(now.getFullYear(), now.getMonth(), now.getDate()), status: { $in: ["present", "late"] } }),
+      Attendance.countDocuments({ date: AttendanceService.getToday(), status: { $in: ["present", "late"] } }),
     ]);
 
     return { pendingLeaves, pendingTimesheets, totalEmployees, todayPresent, todayAbsent: totalEmployees - todayPresent };
@@ -73,7 +76,7 @@ export class DashboardService {
         { $match: { status: "approved", startDate: { $gte: yearStart } } },
         { $group: { _id: "$type", totalDays: { $sum: "$days" }, count: { $sum: 1 } } },
       ]),
-      Attendance.countDocuments({ date: new Date(now.getFullYear(), now.getMonth(), now.getDate()), status: { $in: ["present", "late"] } }),
+      Attendance.countDocuments({ date: AttendanceService.getToday(), status: { $in: ["present", "late"] } }),
     ]);
 
     return {

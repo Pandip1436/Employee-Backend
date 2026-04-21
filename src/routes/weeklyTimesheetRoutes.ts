@@ -28,6 +28,7 @@ router.get("/overtime", authorize("admin", "manager") as any, WeeklyTimesheetCon
 router.post("/reminders/send", authorize("admin") as any, WeeklyTimesheetController.sendReminders as any);
 router.get("/compliance", authorize("admin", "manager") as any, WeeklyTimesheetController.getCompliance as any);
 router.get("/employees-status", authorize("admin", "manager") as any, WeeklyTimesheetController.getEmployeeTimesheetStatus as any);
+router.get("/daily", authorize("admin", "manager") as any, WeeklyTimesheetController.getDailyEntries as any);
 
 // Config
 router.get("/activity-types", ConfigController.getActivityTypes as any);

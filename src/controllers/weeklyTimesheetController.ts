@@ -134,6 +134,14 @@ export class WeeklyTimesheetController {
     } catch (e) { next(e); }
   }
 
+  static async getDailyEntries(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const date = (req.query.date as string) || new Date().toISOString().slice(0, 10);
+      const data = await WeeklyTimesheetService.getEmployeeDailyEntries(date);
+      res.json({ success: true, message: "Daily entries fetched.", data });
+    } catch (e) { next(e); }
+  }
+
   static async getEmployeeTimesheetStatus(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const { weekStart, department } = req.query as { weekStart?: string; department?: string };

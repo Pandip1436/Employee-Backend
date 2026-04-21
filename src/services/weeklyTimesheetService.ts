@@ -5,14 +5,19 @@ import { parsePagination } from "../utils/helpers";
 
 export class WeeklyTimesheetService {
   static getWeekRange(date?: string) {
-    const d = date ? new Date(date) : new Date();
-    const day = d.getDay();
-    const monday = new Date(d);
-    monday.setDate(d.getDate() - ((day + 6) % 7));
-    monday.setHours(0, 0, 0, 0);
-    const sunday = new Date(monday);
-    sunday.setDate(monday.getDate() + 6);
-    sunday.setHours(23, 59, 59, 999);
+    // weekStart must be timezone-invariant: local-time math produced different
+    // stored Dates on servers in different timezones (e.g. IST dev vs UTC prod),
+    // defeating the { userId, weekStart } unique index and creating duplicates.
+    const src = date ? new Date(date) : new Date();
+    const y = src.getUTCFullYear();
+    const m = src.getUTCMonth();
+    const dayOfMonth = src.getUTCDate();
+    const dow = src.getUTCDay(); // 0=Sun..6=Sat
+    const mondayUtc = Date.UTC(y, m, dayOfMonth - ((dow + 6) % 7));
+    const monday = new Date(mondayUtc);
+    const sunday = new Date(mondayUtc);
+    sunday.setUTCDate(sunday.getUTCDate() + 6);
+    sunday.setUTCHours(23, 59, 59, 999);
     return { weekStart: monday, weekEnd: sunday };
   }
 
@@ -262,6 +267,54 @@ export class WeeklyTimesheetService {
         sheetId: sheet?._id ?? null,
       };
     });
+  }
+
+  /**
+   * Per-employee entries for a single calendar day. Returns one row per
+   * employee that logged hours on that day.
+   */
+  static async getEmployeeDailyEntries(date: string) {
+    const { weekStart } = this.getWeekRange(date);
+    // Day index 0..6 (Mon..Sun) — compute from UTC midnight of the target day
+    // minus the week's Monday, so this is timezone-stable.
+    const target = new Date(date);
+    const targetUtc = Date.UTC(target.getUTCFullYear(), target.getUTCMonth(), target.getUTCDate());
+    const dayIdx = Math.round((targetUtc - weekStart.getTime()) / (1000 * 60 * 60 * 24));
+    if (dayIdx < 0 || dayIdx > 6) return [];
+
+    const sheets = await WeeklyTimesheet.find({ weekStart })
+      .populate("userId", "name email department role")
+      .populate("entries.projectId", "name client")
+      .lean();
+
+    const rows = [];
+    for (const s of sheets) {
+      const user = s.userId as unknown as { _id: unknown; name: string; email: string; department?: string; role?: string };
+      if (!user || user.role === "admin") continue;
+      const dayEntries = (s.entries || [])
+        .filter((e) => (e.hours?.[dayIdx] ?? 0) > 0)
+        .map((e) => {
+          const proj = e.projectId as unknown as { _id: unknown; name?: string; client?: string };
+          return {
+            projectId: proj?._id ?? null,
+            projectName: proj?.name ?? "Unknown",
+            client: proj?.client ?? null,
+            task: e.task,
+            activityType: e.activityType,
+            hours: e.hours?.[dayIdx] ?? 0,
+            notes: e.notes ?? null,
+          };
+        });
+      if (dayEntries.length === 0) continue;
+      rows.push({
+        user: { _id: user._id, name: user.name, email: user.email, department: user.department ?? null },
+        status: s.status,
+        totalHours: dayEntries.reduce((sum, e) => sum + e.hours, 0),
+        entries: dayEntries,
+      });
+    }
+    rows.sort((a, b) => a.user.name.localeCompare(b.user.name));
+    return rows;
   }
 
   static async getDashboardStats() {
