@@ -1,5 +1,6 @@
 import { Response, NextFunction } from "express";
 import { EmployeeProfileService } from "../services/employeeProfileService";
+import { StorageService } from "../services/storageService";
 import { AuthRequest } from "../types";
 
 export class EmployeeProfileController {
@@ -35,7 +36,13 @@ export class EmployeeProfileController {
   static async uploadPhoto(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       if (!req.file) { res.status(400).json({ success: false, message: "No file." }); return; }
-      const profile = await EmployeeProfileService.uploadProfilePhoto(req.user!._id.toString(), req.file.path);
+      const key = await StorageService.upload({
+        buffer: req.file.buffer,
+        originalName: req.file.originalname,
+        mimeType: req.file.mimetype,
+        folder: "profiles/photos",
+      });
+      const profile = await EmployeeProfileService.uploadProfilePhoto(req.user!._id.toString(), key);
       res.status(200).json({ success: true, message: "Photo uploaded.", data: profile });
     } catch (error) { next(error); }
   }
@@ -43,18 +50,34 @@ export class EmployeeProfileController {
   static async uploadOfferLetter(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       if (!req.file) { res.status(400).json({ success: false, message: "No file." }); return; }
-      const profile = await EmployeeProfileService.uploadOfferLetter(req.user!._id.toString(), req.file.path);
+      const key = await StorageService.upload({
+        buffer: req.file.buffer,
+        originalName: req.file.originalname,
+        mimeType: req.file.mimetype,
+        folder: "profiles/offer-letters",
+      });
+      const profile = await EmployeeProfileService.uploadOfferLetter(req.user!._id.toString(), key);
       res.status(200).json({ success: true, message: "Offer letter uploaded.", data: profile });
     } catch (error) { next(error); }
   }
 
   static async uploadCertificates(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      if (!req.files || !(req.files as Express.Multer.File[]).length) {
+      const files = req.files as Express.Multer.File[] | undefined;
+      if (!files || !files.length) {
         res.status(400).json({ success: false, message: "No files." }); return;
       }
-      const paths = (req.files as Express.Multer.File[]).map((f) => f.path);
-      const profile = await EmployeeProfileService.uploadCertificates(req.user!._id.toString(), paths);
+      const keys = await Promise.all(
+        files.map((f) =>
+          StorageService.upload({
+            buffer: f.buffer,
+            originalName: f.originalname,
+            mimeType: f.mimetype,
+            folder: "profiles/certificates",
+          })
+        )
+      );
+      const profile = await EmployeeProfileService.uploadCertificates(req.user!._id.toString(), keys);
       res.status(200).json({ success: true, message: "Certificates uploaded.", data: profile });
     } catch (error) { next(error); }
   }

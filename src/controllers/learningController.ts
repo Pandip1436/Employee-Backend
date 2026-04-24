@@ -32,7 +32,7 @@ export class LearningController {
   static async createCourse(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const course = await Course.create({ ...req.body, createdBy: req.user!._id });
-      NotificationService.notifyAll(
+      NotificationService.notifyAdmins(
         {
           sender: req.user!._id,
           type: "system",

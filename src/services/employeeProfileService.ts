@@ -1,10 +1,35 @@
 import EmployeeProfile from "../models/EmployeeProfile";
 import { ApiError } from "../utils/ApiError";
+import { StorageService } from "./storageService";
 
 function maskNumber(val: string | undefined, showLast = 4): string {
   if (!val) return "";
   if (val.length <= showLast) return val;
   return "X".repeat(val.length - showLast) + val.slice(-showLast);
+}
+
+async function withFileUrls<T extends Record<string, any>>(profile: T): Promise<T & {
+  profilePhotoUrl?: string;
+  offerLetterUrl?: string;
+  certificateUrls?: string[];
+}> {
+  const [profilePhotoUrl, offerLetterUrl, certificateUrls] = await Promise.all([
+    profile.profilePhoto
+      ? StorageService.getSignedDownloadUrl(profile.profilePhoto, 3600)
+      : Promise.resolve(undefined),
+    profile.offerLetterPath
+      ? StorageService.getSignedDownloadUrl(profile.offerLetterPath, 3600)
+      : Promise.resolve(undefined),
+    Array.isArray(profile.certificatePaths) && profile.certificatePaths.length
+      ? Promise.all(
+          profile.certificatePaths.map((k: string) =>
+            StorageService.getSignedDownloadUrl(k, 3600)
+          )
+        )
+      : Promise.resolve(undefined),
+  ]);
+
+  return { ...profile, profilePhotoUrl, offerLetterUrl, certificateUrls };
 }
 
 export class EmployeeProfileService {
@@ -16,17 +41,17 @@ export class EmployeeProfileService {
 
     let profile = await query.lean();
     if (!profile) {
-      // Auto-create an empty profile
       profile = (await EmployeeProfile.create({ userId })).toObject();
     }
 
-    // Mask sensitive fields for non-sensitive reads
+    const enriched = await withFileUrls(profile);
+
     if (!includeSensitive) {
-      return profile;
+      return enriched;
     }
 
     return {
-      ...profile,
+      ...enriched,
       bankAccountNumberMasked: maskNumber(profile.bankAccountNumber),
       aadhaarNumberMasked: maskNumber(profile.aadhaarNumber),
       panNumberMasked: maskNumber(profile.panNumber),
@@ -45,26 +70,26 @@ export class EmployeeProfileService {
     return profile;
   }
 
-  static async uploadProfilePhoto(userId: string, filePath: string) {
+  static async uploadProfilePhoto(userId: string, key: string) {
     return EmployeeProfile.findOneAndUpdate(
       { userId },
-      { profilePhoto: filePath },
+      { profilePhoto: key },
       { new: true, upsert: true }
     );
   }
 
-  static async uploadOfferLetter(userId: string, filePath: string) {
+  static async uploadOfferLetter(userId: string, key: string) {
     return EmployeeProfile.findOneAndUpdate(
       { userId },
-      { offerLetterPath: filePath },
+      { offerLetterPath: key },
       { new: true, upsert: true }
     );
   }
 
-  static async uploadCertificates(userId: string, filePaths: string[]) {
+  static async uploadCertificates(userId: string, keys: string[]) {
     return EmployeeProfile.findOneAndUpdate(
       { userId },
-      { $push: { certificatePaths: { $each: filePaths } } },
+      { $push: { certificatePaths: { $each: keys } } },
       { new: true, upsert: true }
     );
   }

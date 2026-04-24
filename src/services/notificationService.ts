@@ -48,6 +48,14 @@ export class NotificationService {
     return this.createMany(docs);
   }
 
+  static async notifyAdmins(input: Omit<CreateNotificationInput, "recipient">, excludeUserId?: string | Types.ObjectId) {
+    const filter: Record<string, unknown> = { isActive: true, role: "admin" };
+    if (excludeUserId) filter._id = { $ne: excludeUserId };
+    const users = await User.find(filter).select("_id");
+    const docs = users.map((u) => ({ ...input, recipient: u._id }));
+    return this.createMany(docs);
+  }
+
   static async list(userId: string | Types.ObjectId, opts: { page: number; limit: number; unreadOnly?: boolean }) {
     const filter: Record<string, unknown> = { recipient: userId };
     if (opts.unreadOnly) filter.isRead = false;

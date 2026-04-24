@@ -1,8 +1,7 @@
 import Document from "../models/Document";
 import { ApiError } from "../utils/ApiError";
 import { parsePagination } from "../utils/helpers";
-import fs from "fs";
-import path from "path";
+import { StorageService } from "./storageService";
 
 export class DocumentService {
   static async upload(
@@ -62,11 +61,9 @@ export class DocumentService {
       throw new ApiError(403, "You can only delete your own documents.");
     }
 
-    // Delete the physical file
-    const filePath = path.resolve(doc.path);
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-    }
+    await StorageService.delete(doc.path).catch((e) => {
+      console.error("R2 delete failed for key", doc.path, e);
+    });
 
     await Document.findByIdAndDelete(id);
   }

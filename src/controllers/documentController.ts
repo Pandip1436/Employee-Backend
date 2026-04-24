@@ -1,11 +1,9 @@
 import { Response, NextFunction } from "express";
 import { DocumentService } from "../services/documentService";
+import { StorageService } from "../services/storageService";
 import { AuditService } from "../services/auditService";
 import { NotificationService } from "../services/notificationService";
 import { AuthRequest } from "../types";
-import { ApiError } from "../utils/ApiError";
-import path from "path";
-import fs from "fs";
 
 export class DocumentController {
   static async upload(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
@@ -15,12 +13,19 @@ export class DocumentController {
         return;
       }
 
+      const key = await StorageService.upload({
+        buffer: req.file.buffer,
+        originalName: req.file.originalname,
+        mimeType: req.file.mimetype,
+        folder: "documents",
+      });
+
       const doc = await DocumentService.upload(req.user!._id.toString(), {
         name: req.body.name || req.file.originalname,
         originalName: req.file.originalname,
         mimeType: req.file.mimetype,
         size: req.file.size,
-        path: req.file.path,
+        path: key,
         category: req.body.category,
         access: req.body.access,
       });
@@ -69,26 +74,8 @@ export class DocumentController {
   static async download(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const doc = await DocumentService.getById(req.params.id as string);
-
-      // Resolve absolute path: if doc.path is already absolute, use it; otherwise resolve from project root
-      const filePath = path.isAbsolute(doc.path)
-        ? doc.path
-        : path.resolve(process.cwd(), doc.path);
-
-      // Check if file exists on disk
-      if (!fs.existsSync(filePath)) {
-        throw new ApiError(
-          404,
-          "File not found on server. It may have been removed or storage was reset."
-        );
-      }
-
-      res.setHeader("Content-Type", doc.mimeType || "application/octet-stream");
-      res.download(filePath, doc.originalName, (err) => {
-        if (err && !res.headersSent) {
-          next(err);
-        }
-      });
+      const url = await StorageService.getSignedDownloadUrl(doc.path, 900);
+      res.redirect(url);
     } catch (error) {
       next(error);
     }
