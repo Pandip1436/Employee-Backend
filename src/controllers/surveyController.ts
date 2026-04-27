@@ -6,12 +6,12 @@ import { NotificationService } from "../services/notificationService";
 export class SurveyController {
   static async getAll(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      const surveys = await Survey.find().select("-responses").populate("createdBy", "name").sort("-createdAt");
+      const surveys = await Survey.find().populate("createdBy", "name").sort("-createdAt");
       const userId = req.user!._id.toString();
       const withStatus = surveys.map((s) => {
-        const obj = s.toObject();
-        const responded = s.responses?.some((r: any) => r.userId?.toString() === userId);
-        return { ...obj, responded };
+        const responded = s.responses?.some((r: any) => r.userId?.toString() === userId) || false;
+        const { responses: _responses, ...rest } = s.toObject();
+        return { ...rest, responded };
       });
       res.json({ success: true, data: withStatus });
     } catch (e) { next(e); }
