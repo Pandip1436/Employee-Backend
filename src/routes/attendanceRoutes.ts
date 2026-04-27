@@ -13,6 +13,17 @@ router.post("/clock-out", AttendanceController.clockOut as any);
 router.get("/my-today", AttendanceController.getMyToday as any);
 router.get("/my-history", AttendanceController.getMyHistory as any);
 
+// Per-user auto clock-out preference
+router.get("/preferences", AttendanceController.getPreferences as any);
+router.put("/preferences", AttendanceController.updatePreferences as any);
+
+// Admin: backfill absent records for a past date range
+router.post(
+  "/mark-absent",
+  authorize("admin") as any,
+  AttendanceController.markAbsentBackfill as any
+);
+
 // Live status — admin/manager only
 router.get(
   "/live-status",

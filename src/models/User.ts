@@ -42,6 +42,10 @@ const userSchema = new Schema(
       type: Boolean,
       default: true,
     },
+    autoClockOutEnabled: {
+      type: Boolean,
+      default: true,
+    },
     activeToken: {
       type: String,
       select: false,

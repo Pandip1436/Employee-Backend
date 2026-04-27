@@ -1,5 +1,7 @@
 import Attendance, { IAttendance } from "../models/Attendance";
 import User from "../models/User";
+import Holiday from "../models/Holiday";
+import Leave from "../models/Leave";
 import { ApiError } from "../utils/ApiError";
 import { parsePagination } from "../utils/helpers";
 
@@ -222,10 +224,18 @@ export class AttendanceService {
     const today = this.getToday();
     const autoTime = new Date(); // current server time = 7 PM when cron fires
 
+    // Skip users who opted out of auto clock-out
+    const optedOutUsers = await User.find(
+      { autoClockOutEnabled: false },
+      { _id: 1 }
+    ).lean();
+    const skipIds = optedOutUsers.map((u) => u._id);
+
     const openRecords = await Attendance.find({
       date: today,
       clockIn: { $exists: true, $ne: null },
       clockOut: null,
+      ...(skipIds.length ? { userId: { $nin: skipIds } } : {}),
     });
 
     let count = 0;
@@ -248,6 +258,130 @@ export class AttendanceService {
       console.log(`[auto-clockout] Clocked out ${count} employee(s) at ${autoTime.toISOString()}`);
     }
     return count;
+  }
+
+  /**
+   * Returns the UTC-midnight Date for "yesterday" relative to the business calendar.
+   */
+  static getYesterday(): Date {
+    const today = this.getToday();
+    const yesterday = new Date(today);
+    yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+    return yesterday;
+  }
+
+  /**
+   * Auto-mark absent: for every active non-admin user with no attendance record
+   * on `targetDate`, create a record with status "absent" (or "on-leave" if an
+   * approved leave covers that date). Skips Sundays and holidays.
+   * Called by the daily cron job once the work day has fully ended.
+   */
+  static async markAbsentForDate(targetDate: Date) {
+    // Skip Sundays (weekly off)
+    if (targetDate.getUTCDay() === 0) {
+      return { skipped: "sunday", created: 0 };
+    }
+
+    // Skip holidays
+    const isHoliday = await Holiday.exists({ date: targetDate });
+    if (isHoliday) {
+      return { skipped: "holiday", created: 0 };
+    }
+
+    // Active non-admin users
+    const users = await User.find({
+      isActive: true,
+      role: { $ne: "admin" },
+    })
+      .select("_id")
+      .lean();
+    if (!users.length) return { skipped: null, created: 0 };
+
+    const userIds = users.map((u) => u._id);
+
+    // Users who already have a record for that date
+    const existing = await Attendance.find({
+      date: targetDate,
+      userId: { $in: userIds },
+    })
+      .select("userId")
+      .lean();
+    const recordedIds = new Set(existing.map((r) => r.userId.toString()));
+
+    // Users with an approved leave covering that date
+    const approvedLeaves = await Leave.find({
+      status: "approved",
+      startDate: { $lte: targetDate },
+      endDate: { $gte: targetDate },
+      userId: { $in: userIds },
+    })
+      .select("userId")
+      .lean();
+    const onLeaveIds = new Set(approvedLeaves.map((l) => l.userId.toString()));
+
+    const docs: Partial<IAttendance>[] = [];
+    for (const u of userIds) {
+      const id = u.toString();
+      if (recordedIds.has(id)) continue;
+      docs.push({
+        userId: u,
+        date: targetDate,
+        clockIn: null,
+        clockOut: null,
+        totalHours: null,
+        status: onLeaveIds.has(id) ? "on-leave" : "absent",
+        notes: onLeaveIds.has(id) ? "Auto-marked: approved leave" : "Auto-marked: no clock-in",
+      });
+    }
+
+    if (!docs.length) return { skipped: null, created: 0 };
+
+    try {
+      await Attendance.insertMany(docs, { ordered: false });
+    } catch (err: any) {
+      // Ignore duplicate-key errors (race with manual clock-in); rethrow others
+      if (err?.code !== 11000 && !(err?.writeErrors && err.writeErrors.every((e: any) => e.code === 11000))) {
+        throw err;
+      }
+    }
+
+    console.log(`[mark-absent] ${docs.length} record(s) created for ${targetDate.toISOString().slice(0, 10)}`);
+    return { skipped: null, created: docs.length };
+  }
+
+  /**
+   * Backfill absent records across a date range (inclusive on both ends).
+   * Iterates day by day calling markAbsentForDate. Stops at today (never future).
+   */
+  static async markAbsentForRange(from: Date, to: Date) {
+    const today = this.getToday();
+    if (from > to) throw new ApiError(400, "'from' must be on or before 'to'.");
+
+    const results: { date: string; created: number; skipped: string | null }[] = [];
+    const cursor = new Date(from);
+    while (cursor <= to && cursor <= today) {
+      const r = await this.markAbsentForDate(new Date(cursor));
+      results.push({
+        date: cursor.toISOString().slice(0, 10),
+        created: r.created,
+        skipped: r.skipped,
+      });
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
+
+    const totalCreated = results.reduce((s, d) => s + d.created, 0);
+    return { totalCreated, days: results };
+  }
+
+  // ── Per-user auto clock-out preference ──
+  static async getPreferences(userId: string) {
+    const user = await User.findById(userId).select("autoClockOutEnabled").lean();
+    return { autoClockOutEnabled: user?.autoClockOutEnabled !== false };
+  }
+
+  static async updatePreferences(userId: string, autoClockOutEnabled: boolean) {
+    await User.findByIdAndUpdate(userId, { autoClockOutEnabled });
+    return { autoClockOutEnabled };
   }
 
   // Generic range report. `startDate` and `endDate` are inclusive, local-time day boundaries.

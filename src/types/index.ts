@@ -13,6 +13,7 @@ export interface IUser extends Document {
   role: UserRole;
   department?: string;
   isActive: boolean;
+  autoClockOutEnabled?: boolean;
   activeToken?: string;
   lastLoginAt?: Date;
   createdAt: Date;
