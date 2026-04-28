@@ -4,8 +4,15 @@ import {
   DeleteObjectCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { Readable } from "stream";
 import path from "path";
 import { r2Client, R2_BUCKET_NAME, R2_PUBLIC_BASE_URL } from "../config/r2";
+
+export interface ObjectStream {
+  body: Readable;
+  contentType?: string;
+  contentLength?: number;
+}
 
 export interface UploadInput {
   buffer: Buffer;
@@ -46,6 +53,17 @@ export class StorageService {
       new GetObjectCommand({ Bucket: R2_BUCKET_NAME, Key: key }),
       { expiresIn: expiresInSeconds }
     );
+  }
+
+  static async getObjectStream(key: string): Promise<ObjectStream> {
+    const result = await r2Client.send(
+      new GetObjectCommand({ Bucket: R2_BUCKET_NAME, Key: key })
+    );
+    return {
+      body: result.Body as Readable,
+      contentType: result.ContentType,
+      contentLength: result.ContentLength,
+    };
   }
 
   static getPublicUrl(key: string): string | null {

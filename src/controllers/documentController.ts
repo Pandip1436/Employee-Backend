@@ -74,8 +74,16 @@ export class DocumentController {
   static async download(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const doc = await DocumentService.getById(req.params.id as string);
-      const url = await StorageService.getSignedDownloadUrl(doc.path, 900);
-      res.redirect(url);
+      const obj = await StorageService.getObjectStream(doc.path);
+
+      const filename = (doc as any).originalName || (doc as any).name || "download";
+      const safeName = encodeURIComponent(filename);
+      res.setHeader("Content-Type", obj.contentType || (doc as any).mimeType || "application/octet-stream");
+      if (obj.contentLength != null) res.setHeader("Content-Length", String(obj.contentLength));
+      res.setHeader("Content-Disposition", `attachment; filename="${filename.replace(/"/g, "")}"; filename*=UTF-8''${safeName}`);
+
+      obj.body.on("error", (err) => next(err));
+      obj.body.pipe(res);
     } catch (error) {
       next(error);
     }
