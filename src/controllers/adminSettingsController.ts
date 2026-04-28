@@ -234,6 +234,45 @@ export class AdminSettingsController {
     } catch (e) { next(e); }
   }
 
+  static async deleteAuditLog(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const id = req.params.id as string;
+      const deleted = await AuditLog.findByIdAndDelete(id);
+      if (!deleted) {
+        res.status(404).json({ success: false, message: "Audit log not found." });
+        return;
+      }
+      AuditService.log({
+        userId: req.user!._id.toString(),
+        action: "Audit log entry deleted",
+        module: "settings",
+        details: `Deleted entry ${id}`,
+        ipAddress: req.ip,
+      });
+      res.json({ success: true, message: "Audit log deleted." });
+    } catch (e) { next(e); }
+  }
+
+  static async clearAuditLogs(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const filter: Record<string, unknown> = {};
+      if (req.query.module) filter.module = req.query.module;
+      if (req.query.action) {
+        const escaped = String(req.query.action).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        filter.action = { $regex: escaped, $options: "i" };
+      }
+      const result = await AuditLog.deleteMany(filter);
+      AuditService.log({
+        userId: req.user!._id.toString(),
+        action: "Audit logs cleared",
+        module: "settings",
+        details: `Cleared ${result.deletedCount} entr${result.deletedCount === 1 ? "y" : "ies"}${Object.keys(filter).length ? " (filtered)" : ""}`,
+        ipAddress: req.ip,
+      });
+      res.json({ success: true, message: `Cleared ${result.deletedCount} entries.`, data: { deletedCount: result.deletedCount } });
+    } catch (e) { next(e); }
+  }
+
   // Audit Logs
   static async getAuditLogs(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {

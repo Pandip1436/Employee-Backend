@@ -131,15 +131,21 @@ export class AttendanceService {
     };
   }
 
-  static async getTodayLiveStatus() {
-    const today = this.getToday();
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
+  static async getTodayLiveStatus(targetDateStr?: string) {
+    let dayStart: Date;
+    if (targetDateStr) {
+      const [y, m, d] = targetDateStr.split("-").map(Number);
+      dayStart = new Date(Date.UTC(y, m - 1, d));
+    } else {
+      dayStart = this.getToday();
+    }
+    const dayEnd = new Date(dayStart);
+    dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
 
     // Use a date range to be robust to timezone / precision mismatches
     // (records may have been saved with slightly different "midnight" values)
     const records = await Attendance.find({
-      date: { $gte: today, $lt: tomorrow },
+      date: { $gte: dayStart, $lt: dayEnd },
     })
       .populate("userId", "name email department role")
       .lean();

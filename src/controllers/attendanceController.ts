@@ -87,9 +87,10 @@ export class AttendanceController {
     } catch (error) { next(error); }
   }
 
-  static async getTodayLiveStatus(_req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  static async getTodayLiveStatus(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      const result = await AttendanceService.getTodayLiveStatus();
+      const date = typeof req.query.date === "string" ? req.query.date : undefined;
+      const result = await AttendanceService.getTodayLiveStatus(date);
       res.status(200).json({ success: true, message: "Live status fetched.", data: result });
     } catch (error) { next(error); }
   }

@@ -21,5 +21,7 @@ router.put("/leave-policy", AdminSettingsController.updateLeavePolicy as any);
 router.get("/email-templates", AdminSettingsController.getEmailTemplates as any);
 router.put("/email-templates", AdminSettingsController.updateEmailTemplates as any);
 router.get("/audit-logs", AdminSettingsController.getAuditLogs as any);
+router.delete("/audit-logs", AdminSettingsController.clearAuditLogs as any);
+router.delete("/audit-logs/:id", AdminSettingsController.deleteAuditLog as any);
 
 export default router;
