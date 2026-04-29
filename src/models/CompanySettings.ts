@@ -19,6 +19,12 @@ const companySettingsSchema = new Schema(
       sick: { total: { type: Number, default: 10 }, carryForward: { type: Boolean, default: false } },
       earned: { total: { type: Number, default: 15 }, carryForward: { type: Boolean, default: true }, maxCarry: { type: Number, default: 5 } },
     },
+    attendancePolicy: {
+      officeStartTime: { type: String, default: "09:00" }, // "HH:MM" in company timezone
+      graceMinutes: { type: Number, default: 0 },
+    },
+    notificationEmails: { type: [String], default: [] }, // recipients for clock-in/out & late alerts
+
     emailTemplates: [{
       key: { type: String },
       subject: { type: String },

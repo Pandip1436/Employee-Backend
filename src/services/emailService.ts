@@ -11,9 +11,22 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-function getAdminEmails(): string[] {
-  const emails = process.env.ADMIN_EMAILS || "";
-  return emails.split(",").map((e) => e.trim()).filter(Boolean);
+async function getAdminEmails(): Promise<string[]> {
+  // Prefer the editable list from Company Settings; fall back to env.
+  try {
+    const settings = await CompanySettings.findOne().select("notificationEmails").lean();
+    const fromDb = ((settings as any)?.notificationEmails || [])
+      .map((e: string) => String(e).trim())
+      .filter(Boolean);
+    if (fromDb.length) return fromDb;
+  } catch {
+    // ignore, fall through to env
+  }
+  const fromEnv = (process.env.ADMIN_EMAILS || "")
+    .split(",")
+    .map((e) => e.trim())
+    .filter(Boolean);
+  return fromEnv;
 }
 
 function formatTime(date: Date): string {
@@ -101,7 +114,7 @@ async function sendTemplatedEmail(
   fallback: { subject: string; html: string },
   headerColor = "#4f46e5"
 ): Promise<void> {
-  const adminEmails = getAdminEmails();
+  const adminEmails = await getAdminEmails();
   if (adminEmails.length === 0) return;
 
   const tpl = await loadTemplate(templateKey);

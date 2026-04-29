@@ -2,8 +2,28 @@ import Attendance, { IAttendance } from "../models/Attendance";
 import User from "../models/User";
 import Holiday from "../models/Holiday";
 import Leave from "../models/Leave";
+import CompanySettings from "../models/CompanySettings";
 import { ApiError } from "../utils/ApiError";
 import { parsePagination } from "../utils/helpers";
+
+// How many minutes you must add to a UTC instant to express it in the given IANA tz.
+function tzOffsetMinutes(at: Date, tz: string): number {
+  const dtf = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    hour12: false,
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+  });
+  const parts: Record<string, string> = {};
+  for (const p of dtf.formatToParts(at)) {
+    if (p.type !== "literal") parts[p.type] = p.value;
+  }
+  const asUtc = Date.UTC(
+    +parts.year, +parts.month - 1, +parts.day,
+    +parts.hour === 24 ? 0 : +parts.hour, +parts.minute, +parts.second,
+  );
+  return (asUtc - at.getTime()) / 60000;
+}
 
 export class AttendanceService {
   /**
@@ -28,11 +48,35 @@ export class AttendanceService {
     return new Date(Date.UTC(y, m - 1, d));
   }
 
-  private static getOfficeStart(today: Date): Date {
-    const [h, m] = (process.env.OFFICE_START_TIME || "09:15").split(":").map(Number);
-    const officeStart = new Date(today);
-    officeStart.setUTCHours(h, m, 0, 0);
-    return officeStart;
+  /**
+   * Returns { officeStart, lateThreshold } as real instants.
+   * `officeStart` is the configured "HH:MM" interpreted in the company timezone
+   * for the calendar day of `now`. `lateThreshold = officeStart + graceMinutes`.
+   */
+  private static async getOfficeStartForNow(now: Date): Promise<{ officeStart: Date; lateThreshold: Date }> {
+    const settings = await CompanySettings.findOne()
+      .select("attendancePolicy timezone")
+      .lean();
+    const policy = (settings as any)?.attendancePolicy || {};
+    const startStr: string = policy.officeStartTime || process.env.OFFICE_START_TIME || "09:00";
+    const graceMinutes: number = Number.isFinite(policy.graceMinutes) ? policy.graceMinutes : 0;
+    const tz: string = (settings as any)?.timezone || process.env.BUSINESS_TIMEZONE || "Asia/Kolkata";
+    const [h, m] = startStr.split(":").map(Number);
+
+    // Find calendar Y-M-D in the company timezone for `now`
+    const dtf = new Intl.DateTimeFormat("en-CA", {
+      timeZone: tz,
+      year: "numeric", month: "2-digit", day: "2-digit",
+    });
+    const parts: Record<string, string> = {};
+    for (const p of dtf.formatToParts(now)) {
+      if (p.type !== "literal") parts[p.type] = p.value;
+    }
+    // Build a candidate UTC moment for (Y, M, D, h, m), then correct by tz offset
+    const candidate = new Date(Date.UTC(+parts.year, +parts.month - 1, +parts.day, h, m, 0));
+    const officeStart = new Date(candidate.getTime() - tzOffsetMinutes(candidate, tz) * 60000);
+    const lateThreshold = new Date(officeStart.getTime() + graceMinutes * 60000);
+    return { officeStart, lateThreshold };
   }
 
   static async clockIn(userId: string, notes?: string) {
@@ -44,11 +88,11 @@ export class AttendanceService {
     }
 
     const now = new Date();
-    const officeStart = this.getOfficeStart(today);
-    const isLate = now > officeStart;
+    const { officeStart, lateThreshold } = await this.getOfficeStartForNow(now);
+    const isLate = now > lateThreshold;
     const status = isLate ? "late" : "present";
 
-    // Calculate late duration in minutes
+    // Calculate late duration in minutes (measured from officeStart, not the grace cutoff)
     let lateByMinutes = 0;
     if (isLate) {
       lateByMinutes = Math.round((now.getTime() - officeStart.getTime()) / 60000);
