@@ -6,7 +6,7 @@ const companySettingsSchema = new Schema(
     logo: { type: String },
     timezone: { type: String, default: "Asia/Kolkata" },
     fiscalYearStart: { type: String, default: "April" },
-    workingDays: { type: [String], default: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"] },
+    workingDays: { type: [String], default: ["Mon", "Tue", "Wed", "Thu", "Fri"] },
     departments: [{ name: String, description: { type: String, default: "" } }],
     designations: [{ name: String, level: Number, grade: String }],
     roles: [{

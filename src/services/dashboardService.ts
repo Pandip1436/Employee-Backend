@@ -3,7 +3,8 @@ import Attendance from "../models/Attendance";
 import Leave from "../models/Leave";
 import Holiday from "../models/Holiday";
 import WeeklyTimesheet from "../models/WeeklyTimesheet";
-import { AttendanceService } from "./attendanceService";
+import CompanySettings from "../models/CompanySettings";
+import { AttendanceService, isWorkingDow } from "./attendanceService";
 
 export class DashboardService {
   // ── Employee KPIs ──
@@ -14,25 +15,26 @@ export class DashboardService {
     // of the business-timezone calendar day), not the server's local midnight.
     const today = AttendanceService.getToday();
 
-    const [attendance, todayRecord, leaves, monthAttendance, holidays] = await Promise.all([
+    const [attendance, todayRecord, leaves, monthAttendance, holidays, settings] = await Promise.all([
       Attendance.countDocuments({ userId, date: { $gte: monthStart }, status: { $in: ["present", "late"] } }),
       Attendance.findOne({ userId, date: today }),
       Leave.find({ userId, status: "approved", startDate: { $gte: monthStart } }),
       Attendance.find({ userId, date: { $gte: monthStart } }).select("totalHours"),
       Holiday.find({ date: { $gte: monthStart, $lte: today } }).select("date"),
+      CompanySettings.findOne().select("workingDays").lean(),
     ]);
 
-    // Working days = Mon–Fri from start of month to today, minus declared holidays
+    // Working days = configured working days from start of month to today, minus declared holidays
+    const cfgWorkingDays = (settings as any)?.workingDays as string[] | undefined;
     let workingDays = 0;
     for (let d = 1; d <= now.getDate(); d++) {
       const dow = new Date(now.getFullYear(), now.getMonth(), d).getDay();
-      if (dow !== 0 && dow !== 6) workingDays++;
+      if (isWorkingDow(dow, cfgWorkingDays)) workingDays++;
     }
-    const holidayWeekdays = holidays.filter((h) => {
-      const dow = new Date(h.date).getDay();
-      return dow !== 0 && dow !== 6;
-    }).length;
-    workingDays = Math.max(1, workingDays - holidayWeekdays);
+    const holidayWorkdays = holidays.filter((h) =>
+      isWorkingDow(new Date(h.date).getDay(), cfgWorkingDays)
+    ).length;
+    workingDays = Math.max(1, workingDays - holidayWorkdays);
     const totalHours = monthAttendance.reduce((s, a) => s + (a.totalHours || 0), 0);
     const totalLeaveDays = leaves.reduce((s, l) => s + l.days, 0);
 

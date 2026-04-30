@@ -11,6 +11,26 @@ function parseHHMM(value: string, fallback: [number, number]): [number, number] 
   return [Number(m[1]), Number(m[2])];
 }
 
+const DAY_TO_NUM: Record<string, number> = {
+  sun: 0, sunday: 0,
+  mon: 1, monday: 1,
+  tue: 2, tuesday: 2,
+  wed: 3, wednesday: 3,
+  thu: 4, thursday: 4,
+  fri: 5, friday: 5,
+  sat: 6, saturday: 6,
+};
+
+function buildCronDow(workingDays: string[] | undefined): string {
+  if (!Array.isArray(workingDays) || !workingDays.length) return "1-5"; // safe default
+  const nums = Array.from(new Set(
+    workingDays
+      .map((d) => DAY_TO_NUM[d.toLowerCase()])
+      .filter((n) => typeof n === "number")
+  )).sort((a, b) => a - b);
+  return nums.length ? nums.join(",") : "1-5";
+}
+
 /**
  * Stop existing cron tasks (if any) and re-register them using the latest
  * times / timezone from CompanySettings. Safe to call repeatedly — the admin
@@ -24,24 +44,27 @@ export async function reloadCronJobs(): Promise<void> {
 
   let policyTimes = { autoClockOutTime: "19:00", autoMarkAbsentTime: "01:00" };
   let timezone = process.env.BUSINESS_TIMEZONE || "Asia/Kolkata";
+  let workingDays: string[] | undefined;
   try {
     const settings = await CompanySettings.findOne()
-      .select("attendancePolicy timezone")
+      .select("attendancePolicy timezone workingDays")
       .lean();
     const policy = (settings as any)?.attendancePolicy || {};
     if (policy.autoClockOutTime) policyTimes.autoClockOutTime = policy.autoClockOutTime;
     if (policy.autoMarkAbsentTime) policyTimes.autoMarkAbsentTime = policy.autoMarkAbsentTime;
     if ((settings as any)?.timezone) timezone = (settings as any).timezone;
+    if (Array.isArray((settings as any)?.workingDays)) workingDays = (settings as any).workingDays;
   } catch (err) {
     console.warn("[cron] Could not read CompanySettings, using defaults:", (err as Error).message);
   }
 
   const [acoH, acoM] = parseHHMM(policyTimes.autoClockOutTime, [19, 0]);
   const [amaH, amaM] = parseHHMM(policyTimes.autoMarkAbsentTime, [1, 0]);
+  const cronDow = buildCronDow(workingDays);
 
-  // Auto clock-out — Mon–Sat, runs in company timezone
+  // Auto clock-out — runs only on configured working days, in company timezone
   autoClockOutTask = cron.schedule(
-    `${acoM} ${acoH} * * 1-6`,
+    `${acoM} ${acoH} * * ${cronDow}`,
     async () => {
       try {
         const count = await AttendanceService.autoClockOutAll();
@@ -73,7 +96,7 @@ export async function reloadCronJobs(): Promise<void> {
     { timezone }
   );
 
-  console.log(`[cron] Auto clock-out at ${policyTimes.autoClockOutTime} (Mon-Sat, ${timezone})`);
+  console.log(`[cron] Auto clock-out at ${policyTimes.autoClockOutTime} (DOW=${cronDow}, ${timezone})`);
   console.log(`[cron] Auto-mark absent at ${policyTimes.autoMarkAbsentTime} (daily, ${timezone})`);
 }
 

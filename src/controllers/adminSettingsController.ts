@@ -50,10 +50,11 @@ export class AdminSettingsController {
         details: `Fields: ${Object.keys(req.body).join(", ")}`,
         ipAddress: req.ip,
       });
-      // Re-register cron jobs if anything affecting them changed (timezone or cron times).
+      // Re-register cron jobs if anything affecting them changed.
       const affectsCron =
         Object.prototype.hasOwnProperty.call(req.body, "timezone") ||
-        Object.prototype.hasOwnProperty.call(req.body, "attendancePolicy");
+        Object.prototype.hasOwnProperty.call(req.body, "attendancePolicy") ||
+        Object.prototype.hasOwnProperty.call(req.body, "workingDays");
       if (affectsCron) {
         reloadCronJobs().catch((e) => console.error("[cron] reload failed:", e));
       }

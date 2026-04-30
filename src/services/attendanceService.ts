@@ -6,6 +6,17 @@ import CompanySettings from "../models/CompanySettings";
 import { ApiError } from "../utils/ApiError";
 import { parsePagination } from "../utils/helpers";
 
+const DAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+const DAY_FULL = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const;
+
+// True if `dow` (0=Sun..6=Sat) is in the configured working-days list. Tolerates
+// both short ("Mon") and full ("Monday") forms because legacy data may use either.
+export function isWorkingDow(dow: number, workingDays: string[] | undefined): boolean {
+  const list = (workingDays || []).map((d) => d.toLowerCase());
+  if (!list.length) return dow >= 1 && dow <= 5; // safe default: Mon–Fri
+  return list.includes(DAY_SHORT[dow].toLowerCase()) || list.includes(DAY_FULL[dow].toLowerCase());
+}
+
 // How many minutes you must add to a UTC instant to express it in the given IANA tz.
 function tzOffsetMinutes(at: Date, tz: string): number {
   const dtf = new Intl.DateTimeFormat("en-US", {
@@ -272,7 +283,23 @@ export class AttendanceService {
    */
   static async autoClockOutAll() {
     const today = this.getToday();
-    const autoTime = new Date(); // current server time = 7 PM when cron fires
+    const autoTime = new Date();
+
+    // Read the configured auto-clock-out label so the note reflects the current setting
+    let autoTimeLabel = "auto clock-out";
+    try {
+      const settings = await CompanySettings.findOne()
+        .select("attendancePolicy")
+        .lean();
+      const hhmm = (settings as any)?.attendancePolicy?.autoClockOutTime;
+      if (hhmm && /^\d{1,2}:\d{2}$/.test(hhmm)) {
+        const [hStr, mStr] = hhmm.split(":");
+        const h24 = Number(hStr);
+        const period = h24 >= 12 ? "PM" : "AM";
+        const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+        autoTimeLabel = `${h12}:${mStr} ${period}`;
+      }
+    } catch { /* fall back to generic label */ }
 
     // Skip users who opted out of auto clock-out
     const optedOutUsers = await User.find(
@@ -299,7 +326,7 @@ export class AttendanceService {
       } else if (record.totalHours <= 6) {
         record.status = "half-day";
       }
-      record.notes = (record.notes ? record.notes + " | " : "") + "Auto clock-out at 7:00 PM";
+      record.notes = (record.notes ? record.notes + " | " : "") + `Auto clock-out at ${autoTimeLabel}`;
       await record.save();
       count++;
     }
@@ -323,13 +350,15 @@ export class AttendanceService {
   /**
    * Auto-mark absent: for every active non-admin user with no attendance record
    * on `targetDate`, create a record with status "absent" (or "on-leave" if an
-   * approved leave covers that date). Skips Sundays and holidays.
-   * Called by the daily cron job once the work day has fully ended.
+   * approved leave covers that date). Skips non-working-days (per CompanySettings)
+   * and holidays. Called by the daily cron job once the work day has fully ended.
    */
   static async markAbsentForDate(targetDate: Date) {
-    // Skip Sundays (weekly off)
-    if (targetDate.getUTCDay() === 0) {
-      return { skipped: "sunday", created: 0 };
+    // Skip non-working days based on the configured working week
+    const settings = await CompanySettings.findOne().select("workingDays").lean();
+    const workingDays = (settings as any)?.workingDays as string[] | undefined;
+    if (!isWorkingDow(targetDate.getUTCDay(), workingDays)) {
+      return { skipped: "non-working-day", created: 0 };
     }
 
     // Skip holidays
