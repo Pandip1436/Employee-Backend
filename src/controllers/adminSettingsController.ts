@@ -5,6 +5,7 @@ import User from "../models/User";
 import { AuditService } from "../services/auditService";
 import { AuthRequest } from "../types";
 import { parsePagination } from "../utils/helpers";
+import { reloadCronJobs } from "../utils/cronJobs";
 
 async function getSettings() {
   let settings = await CompanySettings.findOne();
@@ -29,6 +30,7 @@ export class AdminSettingsController {
           timezone: s.timezone,
           fiscalYearStart: s.fiscalYearStart,
           workingDays: s.workingDays,
+          attendancePolicy: (s as any).attendancePolicy || {},
         },
       });
     } catch (e) { next(e); }
@@ -48,6 +50,13 @@ export class AdminSettingsController {
         details: `Fields: ${Object.keys(req.body).join(", ")}`,
         ipAddress: req.ip,
       });
+      // Re-register cron jobs if anything affecting them changed (timezone or cron times).
+      const affectsCron =
+        Object.prototype.hasOwnProperty.call(req.body, "timezone") ||
+        Object.prototype.hasOwnProperty.call(req.body, "attendancePolicy");
+      if (affectsCron) {
+        reloadCronJobs().catch((e) => console.error("[cron] reload failed:", e));
+      }
       res.json({ success: true, data: updated });
     } catch (e) { next(e); }
   }

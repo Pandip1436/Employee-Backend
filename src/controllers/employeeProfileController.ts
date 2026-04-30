@@ -61,6 +61,25 @@ export class EmployeeProfileController {
     } catch (error) { next(error); }
   }
 
+  static async deleteOfferLetter(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const profile = await EmployeeProfileService.deleteOfferLetter(req.user!._id.toString());
+      res.status(200).json({ success: true, message: "Offer letter removed.", data: profile });
+    } catch (error) { next(error); }
+  }
+
+  static async deleteCertificate(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const index = parseInt(req.params.index as string, 10);
+      if (isNaN(index)) {
+        res.status(400).json({ success: false, message: "Invalid certificate index." });
+        return;
+      }
+      const profile = await EmployeeProfileService.deleteCertificate(req.user!._id.toString(), index);
+      res.status(200).json({ success: true, message: "Certificate removed.", data: profile });
+    } catch (error) { next(error); }
+  }
+
   static async uploadCertificates(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const files = req.files as Express.Multer.File[] | undefined;

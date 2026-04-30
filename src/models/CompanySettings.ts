@@ -22,6 +22,8 @@ const companySettingsSchema = new Schema(
     attendancePolicy: {
       officeStartTime: { type: String, default: "09:00" }, // "HH:MM" in company timezone
       graceMinutes: { type: Number, default: 0 },
+      autoClockOutTime: { type: String, default: "19:00" }, // "HH:MM" in company timezone, runs Mon–Sat
+      autoMarkAbsentTime: { type: String, default: "01:00" }, // "HH:MM" in company timezone, runs daily — marks previous day
     },
     notificationEmails: { type: [String], default: [] }, // recipients for clock-in/out & late alerts
 

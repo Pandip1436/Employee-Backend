@@ -16,7 +16,9 @@ router.get("/me", EmployeeProfileController.getMyProfile as any);
 router.put("/me", EmployeeProfileController.updateMyProfile as any);
 router.post("/me/photo", upload.single("photo"), EmployeeProfileController.uploadPhoto as any);
 router.post("/me/offer-letter", upload.single("file"), EmployeeProfileController.uploadOfferLetter as any);
+router.delete("/me/offer-letter", EmployeeProfileController.deleteOfferLetter as any);
 router.post("/me/certificates", upload.array("files", 10), EmployeeProfileController.uploadCertificates as any);
+router.delete("/me/certificates/:index", EmployeeProfileController.deleteCertificate as any);
 
 // Admin/Manager view any employee profile
 router.get("/:id", authorize("admin", "manager") as any, EmployeeProfileController.getByUserId as any);

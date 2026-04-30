@@ -71,26 +71,59 @@ export class EmployeeProfileService {
   }
 
   static async uploadProfilePhoto(userId: string, key: string) {
-    return EmployeeProfile.findOneAndUpdate(
+    await EmployeeProfile.findOneAndUpdate(
       { userId },
       { profilePhoto: key },
       { new: true, upsert: true }
     );
+    return this.getByUserId(userId, true);
   }
 
   static async uploadOfferLetter(userId: string, key: string) {
-    return EmployeeProfile.findOneAndUpdate(
+    await EmployeeProfile.findOneAndUpdate(
       { userId },
       { offerLetterPath: key },
       { new: true, upsert: true }
     );
+    return this.getByUserId(userId, true);
   }
 
   static async uploadCertificates(userId: string, keys: string[]) {
-    return EmployeeProfile.findOneAndUpdate(
+    await EmployeeProfile.findOneAndUpdate(
       { userId },
       { $push: { certificatePaths: { $each: keys } } },
       { new: true, upsert: true }
     );
+    return this.getByUserId(userId, true);
+  }
+
+  static async deleteOfferLetter(userId: string) {
+    const profile = await EmployeeProfile.findOne({ userId });
+    if (!profile) throw new ApiError(404, "Profile not found.");
+    const oldKey = profile.offerLetterPath;
+    profile.offerLetterPath = undefined;
+    await profile.save();
+    if (oldKey) {
+      // Best effort — don't fail the request if the storage delete errors
+      StorageService.delete(oldKey).catch(() => {});
+    }
+    // Return the same enriched shape as getByUserId so the client can drop it straight in
+    return this.getByUserId(userId, true);
+  }
+
+  static async deleteCertificate(userId: string, index: number) {
+    const profile = await EmployeeProfile.findOne({ userId });
+    if (!profile) throw new ApiError(404, "Profile not found.");
+    const paths = profile.certificatePaths || [];
+    if (index < 0 || index >= paths.length) {
+      throw new ApiError(400, "Invalid certificate index.");
+    }
+    const [removed] = paths.splice(index, 1);
+    profile.certificatePaths = paths;
+    await profile.save();
+    if (removed) {
+      StorageService.delete(removed).catch(() => {});
+    }
+    return this.getByUserId(userId, true);
   }
 }
