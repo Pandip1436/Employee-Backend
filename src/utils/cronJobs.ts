@@ -42,7 +42,7 @@ export async function reloadCronJobs(): Promise<void> {
   autoClockOutTask = null;
   markAbsentTask = null;
 
-  let policyTimes = { autoClockOutTime: "19:00", autoMarkAbsentTime: "01:00" };
+  let policyTimes = { autoClockOutTime: "19:00", autoMarkAbsentTime: "14:30" };
   let timezone = process.env.BUSINESS_TIMEZONE || "Asia/Kolkata";
   let workingDays: string[] | undefined;
   try {
@@ -76,16 +76,19 @@ export async function reloadCronJobs(): Promise<void> {
     { timezone }
   );
 
-  // Auto-mark absent — daily, targets the previous calendar day.
-  // Sundays and holidays are skipped inside the service.
+  // Auto-mark absent — runs mid-day, targets TODAY's date.
+  // Anyone who hasn't clocked in by this time is marked absent (or "on-leave"
+  // if an approved leave covers today). A late clock-in afterwards still
+  // overwrites the auto-absent record to "present"/"late" cleanly.
+  // Non-working days and holidays are skipped inside the service.
   markAbsentTask = cron.schedule(
     `${amaM} ${amaH} * * *`,
     async () => {
       try {
-        const yesterday = AttendanceService.getYesterday();
-        const result = await AttendanceService.markAbsentForDate(yesterday);
+        const today = AttendanceService.getToday();
+        const result = await AttendanceService.markAbsentForDate(today);
         if (result.created > 0) {
-          console.log(`[cron] Auto-mark absent: ${result.created} record(s) for ${yesterday.toISOString().slice(0, 10)}`);
+          console.log(`[cron] Auto-mark absent: ${result.created} record(s) for ${today.toISOString().slice(0, 10)}`);
         } else if (result.skipped) {
           console.log(`[cron] Auto-mark absent skipped: ${result.skipped}`);
         }
