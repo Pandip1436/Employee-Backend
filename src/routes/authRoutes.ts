@@ -2,7 +2,7 @@ import { Router } from "express";
 import { AuthController } from "../controllers/authController";
 import { authenticate } from "../middleware/auth";
 import { validate } from "../middleware/validate";
-import { loginSchema, updateProfileSchema, changePasswordSchema } from "../validations/authValidation";
+import { loginSchema, updateProfileSchema, changePasswordSchema, updateStatusSchema } from "../validations/authValidation";
 
 const router = Router();
 
@@ -11,5 +11,6 @@ router.get("/me", authenticate, AuthController.getMe as any);
 router.post("/logout", authenticate, AuthController.logout as any);
 router.put("/profile", authenticate, validate(updateProfileSchema), AuthController.updateProfile as any);
 router.put("/change-password", authenticate, validate(changePasswordSchema), AuthController.changePassword as any);
+router.put("/status", authenticate, validate(updateStatusSchema), AuthController.updateStatus as any);
 
 export default router;

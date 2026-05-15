@@ -119,22 +119,70 @@ export class WeeklyTimesheetService {
     return { data, pagination: { total, page, limit, pages: Math.ceil(total / limit) } };
   }
 
-  static async getAllSheets(query: { page?: number; limit?: number; status?: string; userId?: string }) {
+  static async getAllSheets(query: { page?: number; limit?: number; status?: string; userId?: string; department?: string; startDate?: string; endDate?: string }) {
     const { page, limit, skip } = parsePagination(query);
     const filter: Record<string, unknown> = {};
     if (query.status) filter.status = query.status;
+
+    // Resolve userId scope: explicit userId param wins; otherwise exclude admins.
+    // If department is set, intersect with user IDs in that department.
     if (query.userId) {
       filter.userId = query.userId;
+    } else if (query.department) {
+      const userIds = await User.find({ role: { $ne: "admin" }, department: String(query.department).trim() })
+        .select("_id").lean();
+      filter.userId = { $in: userIds.map((u) => u._id) };
     } else {
-      // Exclude admin users — timesheet export/list is for the workforce only.
       const adminIds = (await User.find({ role: "admin" }).select("_id").lean()).map((u) => u._id);
       if (adminIds.length) filter.userId = { $nin: adminIds };
     }
+
+    // Date range — filter by weekStart inclusive. Matches getForExport behavior.
+    if (query.startDate || query.endDate) {
+      const range: Record<string, Date> = {};
+      if (query.startDate) range.$gte = new Date(query.startDate);
+      if (query.endDate)   range.$lte = new Date(query.endDate);
+      filter.weekStart = range;
+    }
+
     const [data, total] = await Promise.all([
       WeeklyTimesheet.find(filter).populate("userId", "name email department").populate("entries.projectId", "name client").populate("approvedBy", "name").sort("-weekStart").skip(skip).limit(limit),
       WeeklyTimesheet.countDocuments(filter),
     ]);
     return { data, pagination: { total, page, limit, pages: Math.ceil(total / limit) } };
+  }
+
+  /** Fetch all non-draft sheets matching the filters, sorted by weekStart desc.
+   *  Used by the Excel/CSV export endpoint — no pagination. */
+  static async getForExport(query: { startDate?: string; endDate?: string; status?: string; userId?: string; department?: string }) {
+    const filter: Record<string, unknown> = {};
+    if (query.status) {
+      filter.status = query.status;
+    } else {
+      filter.status = { $in: ["submitted", "approved", "rejected"] };
+    }
+
+    if (query.userId) {
+      filter.userId = query.userId;
+    } else if (query.department) {
+      const userIds = await User.find({ role: { $ne: "admin" }, department: String(query.department).trim() })
+        .select("_id").lean();
+      filter.userId = { $in: userIds.map((u) => u._id) };
+    } else {
+      const adminIds = (await User.find({ role: "admin" }).select("_id").lean()).map((u) => u._id);
+      if (adminIds.length) filter.userId = { $nin: adminIds };
+    }
+
+    if (query.startDate || query.endDate) {
+      const range: Record<string, Date> = {};
+      if (query.startDate) range.$gte = new Date(query.startDate);
+      if (query.endDate)   range.$lte = new Date(query.endDate);
+      filter.weekStart = range;
+    }
+    return WeeklyTimesheet.find(filter)
+      .populate("userId", "name email department")
+      .sort("-weekStart")
+      .lean();
   }
 
   static async getProjectSummary(startDate: string, endDate: string) {

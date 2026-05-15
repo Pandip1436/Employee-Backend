@@ -11,6 +11,7 @@ export class UserService {
     role?: string;
     isActive?: string;
     search?: string;
+    department?: string;
   }): Promise<PaginatedResult<IUser>> {
     const { page, limit, skip, sort } = parsePagination(query);
 
@@ -21,6 +22,7 @@ export class UserService {
       filter.role = roles.length > 1 ? { $in: roles } : roles[0];
     }
     if (query.isActive !== undefined) filter.isActive = query.isActive === "true";
+    if (query.department) filter.department = String(query.department).trim();
     if (query.search) {
       const escaped = String(query.search).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const rx = { $regex: escaped, $options: "i" };

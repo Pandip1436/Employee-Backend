@@ -88,4 +88,15 @@ export class AuthController {
       res.status(200).json({ success: true, message: "Password changed successfully." });
     } catch (error) { next(error); }
   }
+
+  static async updateStatus(
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const user = await AuthService.updateStatus(req.user!._id.toString(), req.body.userStatus);
+      res.status(200).json({ success: true, message: "Status updated.", data: user });
+    } catch (error) { next(error); }
+  }
 }

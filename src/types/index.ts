@@ -3,6 +3,7 @@ import { Document, Types } from "mongoose";
 
 // ── User ──
 export type UserRole = "admin" | "manager" | "employee";
+export type UserStatus = "online" | "away" | "dnd";
 
 export interface IUser extends Document {
   _id: Types.ObjectId;
@@ -14,6 +15,7 @@ export interface IUser extends Document {
   department?: string;
   isActive: boolean;
   autoClockOutEnabled?: boolean;
+  userStatus?: UserStatus;
   activeToken?: string;
   lastLoginAt?: Date;
   createdAt: Date;

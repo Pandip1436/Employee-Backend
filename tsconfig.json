@@ -17,6 +17,6 @@
     "ignoreDeprecations": "6.0",
     "typeRoots": ["./node_modules/@types"]
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "src/config/testdb.ts"],
   "exclude": ["node_modules", "dist"]
 }

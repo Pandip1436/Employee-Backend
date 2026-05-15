@@ -22,6 +22,7 @@ router.get("/project-summary", authorize("admin", "manager") as any, WeeklyTimes
 
 // Admin
 router.get("/all", authorize("admin") as any, WeeklyTimesheetController.getAllSheets as any);
+router.get("/export", authorize("admin") as any, WeeklyTimesheetController.exportExcel as any);
 router.get("/dashboard-stats", authorize("admin", "manager") as any, WeeklyTimesheetController.getDashboardStats as any);
 router.get("/missing", authorize("admin", "manager") as any, WeeklyTimesheetController.getMissing as any);
 router.get("/overtime", authorize("admin", "manager") as any, WeeklyTimesheetController.getOvertimeReport as any);

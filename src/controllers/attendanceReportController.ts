@@ -187,93 +187,244 @@ export class AttendanceReportController {
       const userId = req.user!.role === "employee" ? req.user!._id.toString() : (req.query.userId as string);
       const report = await AttendanceService.getReportForRange(startDate, endDate, userId);
 
-      const doc = new PDFDocument({ size: "A4", margin: 40 });
+      // ── Page geometry ──
+      const PAGE_W = 595.28;
+      const PAGE_H = 841.89;
+      const MARGIN = 40;
+      const CONTENT_W = PAGE_W - MARGIN * 2;     // 515.28
+      const CONTENT_R = PAGE_W - MARGIN;          // 555.28
+      const HEADER_H = 70;
+      const FOOTER_RESERVE = 40;                  // distance from page bottom reserved for footer
+      const BODY_BOTTOM = PAGE_H - FOOTER_RESERVE;
+
+      type Align = "left" | "right" | "center";
+      type Col = { label: string; width: number; align?: Align };
+
+      // Column definitions — widths sum to exactly CONTENT_W (515)
+      const summaryCols: Col[] = [
+        { label: "Employee",   width: 140 },
+        { label: "Department", width: 135 },
+        { label: "Present",    width: 45, align: "center" },
+        { label: "Late",       width: 45, align: "center" },
+        { label: "Half",       width: 45, align: "center" },
+        { label: "Absent",     width: 45, align: "center" },
+        { label: "Hours",      width: 60, align: "right"  },
+      ];
+
+      const dailyCols: Col[] = [
+        { label: "Date",      width: 80  },
+        { label: "Employee",  width: 130 },
+        { label: "Clock In",  width: 75, align: "center" },
+        { label: "Clock Out", width: 75, align: "center" },
+        { label: "Hours",     width: 55, align: "right"  },
+        { label: "Status",    width: 100, align: "center" },
+      ];
+
+      // Status pill palette (background + text)
+      const statusColors: Record<string, { bg: string; fg: string }> = {
+        present:  { bg: "#DCFCE7", fg: "#166534" },
+        late:     { bg: "#FEF3C7", fg: "#92400E" },
+        "half-day": { bg: "#FFEDD5", fg: "#9A3412" },
+        absent:   { bg: "#FEE2E2", fg: "#991B1B" },
+        weekend:  { bg: "#E0E7FF", fg: "#3730A3" },
+        holiday:  { bg: "#E0E7FF", fg: "#3730A3" },
+        leave:    { bg: "#F3E8FF", fg: "#6B21A8" },
+      };
+
+      // margins: 0 + autoFirstPage: false — we manage all positioning manually and
+      // attach a pageAdded handler so every page (including the first) gets a
+      // consistent header + footer band. Setting bottom margin to 0 prevents
+      // PDFKit from auto-paginating when we draw the footer near the page bottom.
+      const doc = new PDFDocument({
+        size: "A4",
+        margins: { top: 0, bottom: 0, left: 0, right: 0 },
+        autoFirstPage: false,
+      });
 
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader("Content-Disposition", `attachment; filename=attendance-${period}-${fileTag}.pdf`);
       doc.pipe(res);
 
-      // Header
-      doc.rect(0, 0, 595.28, 70).fill("#4F46E5");
-      doc.fontSize(20).fillColor("#FFFFFF").text(`${periodTitle[period]} Attendance Report`, 40, 20);
-      doc.fontSize(11).text(`United Nexa Tech — ${label}`, 40, 45);
+      // ── Helpers ──
+      // Truncate `text` to fit within `maxWidth` (in current font), appending "…" if it had to clip.
+      const fit = (text: string, maxWidth: number): string => {
+        if (doc.widthOfString(text) <= maxWidth) return text;
+        let s = text;
+        while (s.length > 1 && doc.widthOfString(s + "…") > maxWidth) s = s.slice(0, -1);
+        return s + "…";
+      };
 
-      doc.moveDown(2);
-      let y = 90;
+      // Draw a status pill, centered horizontally in the given cell box.
+      const drawStatusPill = (status: string, cellX: number, cellY: number, cellW: number, rowH: number) => {
+        const label = status || "—";
+        const tone = statusColors[label.toLowerCase()] || { bg: "#F3F4F6", fg: "#374151" };
+        doc.font("Helvetica-Bold").fontSize(7);
+        const pillTextW = doc.widthOfString(label);
+        const pillW = Math.min(pillTextW + 16, cellW - 6);
+        const pillH = 13;
+        const pillX = cellX + (cellW - pillW) / 2;
+        const pillY = cellY + (rowH - pillH) / 2;
+        doc.roundedRect(pillX, pillY, pillW, pillH, 6).fill(tone.bg);
+        doc.fillColor(tone.fg).text(fit(label, pillW - 8), pillX, pillY + 3, {
+          width: pillW,
+          align: "center",
+          lineBreak: false,
+        });
+      };
 
-      // Summary Table
-      doc.fillColor("#111827").fontSize(14).text("Employee Summary", 40, y);
-      y += 25;
+      // Compute x-position and width for each column (boundaries are exact).
+      const colBox = (cols: Col[], i: number) => {
+        let x = MARGIN;
+        for (let k = 0; k < i; k++) x += cols[k].width;
+        return { x, w: cols[i].width };
+      };
 
-      // Table header
-      const cols = [40, 170, 280, 330, 370, 410, 460, 520];
-      const headers = ["Employee", "Department", "Present", "Late", "Half", "Absent", "Hours"];
+      // Draw the page header band — title left, range right.
+      const drawPageHeader = (titlePrefix?: string) => {
+        doc.rect(0, 0, PAGE_W, HEADER_H).fill("#4F46E5");
+        doc.fillColor("#FFFFFF").font("Helvetica-Bold").fontSize(18)
+          .text(`${periodTitle[period]} Attendance Report${titlePrefix ? ` — ${titlePrefix}` : ""}`,
+                MARGIN, 22, { width: CONTENT_W, lineBreak: false });
+        doc.font("Helvetica").fontSize(10)
+          .text(`United Nexa Tech · ${label}`, MARGIN, 46, { width: CONTENT_W, lineBreak: false });
+      };
 
-      doc.rect(40, y, 515, 22).fill("#F3F4F6");
-      doc.fillColor("#4B5563").fontSize(9).font("Helvetica-Bold");
-      headers.forEach((h, i) => doc.text(h, cols[i], y + 6, { width: 60 }));
-      y += 22;
+      // Draw the bottom footer band on the current page.
+      const drawPageFooter = () => {
+        const y = PAGE_H - 28;
+        doc.moveTo(MARGIN, y - 6).lineTo(CONTENT_R, y - 6)
+          .strokeColor("#E5E7EB").lineWidth(0.5).stroke();
+        doc.font("Helvetica").fontSize(8).fillColor("#9CA3AF").text(
+          `Generated on ${new Date().toLocaleString("en-IN")} · United Nexa Tech Employee Portal`,
+          MARGIN, y, { align: "center", width: CONTENT_W, lineBreak: false }
+        );
+      };
 
-      doc.font("Helvetica").fontSize(9).fillColor("#374151");
-      for (const emp of report.employees) {
-        if (y > 750) {
-          doc.addPage();
-          y = 40;
+      // Draw a table header row at y, returns the y BELOW the header.
+      const TABLE_H_HEIGHT = 22;
+      const drawTableHeader = (cols: Col[], y: number): number => {
+        doc.rect(MARGIN, y, CONTENT_W, TABLE_H_HEIGHT).fill("#EEF2FF");
+        doc.font("Helvetica-Bold").fontSize(9).fillColor("#3730A3");
+        cols.forEach((c, i) => {
+          const { x, w } = colBox(cols, i);
+          doc.text(c.label, x + 6, y + 7, {
+            width: w - 12,
+            align: c.align ?? "left",
+            lineBreak: false,
+          });
+        });
+        // Bottom hairline under header
+        doc.moveTo(MARGIN, y + TABLE_H_HEIGHT).lineTo(MARGIN + CONTENT_W, y + TABLE_H_HEIGHT)
+          .strokeColor("#C7D2FE").lineWidth(0.6).stroke();
+        return y + TABLE_H_HEIGHT;
+      };
+
+      // Draw one data row. `values` is parallel to `cols`. `rowIdx` toggles striping.
+      // Special-case Status column when the column label is "Status" — render as pill.
+      const ROW_HEIGHT = 20;
+      const drawRow = (cols: Col[], values: string[], y: number, rowIdx: number, statusRaw?: string) => {
+        if (rowIdx % 2 === 1) {
+          doc.rect(MARGIN, y, CONTENT_W, ROW_HEIGHT).fill("#F9FAFB");
         }
-        const row = [
+        doc.font("Helvetica").fontSize(9).fillColor("#1F2937");
+        cols.forEach((c, i) => {
+          const { x, w } = colBox(cols, i);
+          if (c.label === "Status" && statusRaw) {
+            drawStatusPill(statusRaw, x, y, w, ROW_HEIGHT);
+            return;
+          }
+          doc.font("Helvetica").fontSize(9).fillColor("#1F2937");
+          const v = values[i] ?? "";
+          doc.text(fit(v, w - 12), x + 6, y + 6, {
+            width: w - 12,
+            align: c.align ?? "left",
+            lineBreak: false,
+          });
+        });
+        // Subtle bottom border
+        doc.moveTo(MARGIN, y + ROW_HEIGHT).lineTo(MARGIN + CONTENT_W, y + ROW_HEIGHT)
+          .strokeColor("#F1F5F9").lineWidth(0.4).stroke();
+      };
+
+      // pageAdded fires for every page (including the first, because of autoFirstPage:false).
+      doc.on("pageAdded", () => {
+        drawPageHeader();
+        drawPageFooter();
+      });
+
+      const BODY_TOP = HEADER_H + 20;
+
+      const startBodyOnNewPage = (): number => {
+        doc.addPage();
+        return BODY_TOP;
+      };
+
+      // ── First page ──
+      doc.addPage(); // triggers pageAdded → header + footer drawn
+      let y = BODY_TOP;
+
+      // Draw a section header (title + table column header). Returns next y.
+      const drawSection = (title: string, cols: Col[], yy: number): number => {
+        doc.font("Helvetica-Bold").fontSize(13).fillColor("#111827")
+          .text(title, MARGIN, yy, { width: CONTENT_W, lineBreak: false });
+        yy += 22;
+        return drawTableHeader(cols, yy);
+      };
+
+      // Section: Employee Summary
+      y = drawSection("Employee Summary", summaryCols, y);
+
+      let rowIdx = 0;
+      for (const emp of report.employees) {
+        if (y + ROW_HEIGHT > BODY_BOTTOM) {
+          y = drawSection("Employee Summary (cont.)", summaryCols, startBodyOnNewPage());
+        }
+        const values = [
           emp.name,
           emp.department || "—",
           String(emp.presentDays),
           String(emp.lateDays),
           String(emp.halfDays),
           String(emp.absentDays),
-          emp.totalHours.toFixed(1) + "h",
+          `${emp.totalHours.toFixed(1)}h`,
         ];
-        row.forEach((val, i) => doc.text(val, cols[i], y + 4, { width: i === 0 ? 120 : 60 }));
-        y += 20;
-        doc.moveTo(40, y).lineTo(555, y).strokeColor("#E5E7EB").lineWidth(0.5).stroke();
+        drawRow(summaryCols, values, y, rowIdx);
+        y += ROW_HEIGHT;
+        rowIdx++;
+      }
+      if (report.employees.length === 0) {
+        doc.font("Helvetica-Oblique").fontSize(9).fillColor("#6B7280")
+          .text("No records for this period.", MARGIN + 6, y + 6, { width: CONTENT_W - 12, lineBreak: false });
+        y += ROW_HEIGHT;
       }
 
-      // Daily Records
-      y += 30;
-      if (y > 680) { doc.addPage(); y = 40; }
-      doc.fillColor("#111827").fontSize(14).font("Helvetica-Bold").text("Daily Records", 40, y);
-      y += 25;
+      // Section: Daily Records — leave some breathing room, start fresh page if too tight
+      y += 24;
+      if (y + 80 > BODY_BOTTOM) y = startBodyOnNewPage();
+      y = drawSection("Daily Records", dailyCols, y);
 
-      const detailCols = [40, 120, 230, 310, 380, 445, 510];
-      const detailHeaders = ["Date", "Employee", "Clock In", "Clock Out", "Hours", "Status"];
-
-      doc.rect(40, y, 515, 22).fill("#F3F4F6");
-      doc.fillColor("#4B5563").fontSize(8).font("Helvetica-Bold");
-      detailHeaders.forEach((h, i) => doc.text(h, detailCols[i], y + 6, { width: 70 }));
-      y += 22;
-
-      doc.font("Helvetica").fontSize(8).fillColor("#374151");
+      rowIdx = 0;
       for (const r of report.allRecords) {
-        if (y > 770) {
-          doc.addPage();
-          y = 40;
+        if (y + ROW_HEIGHT > BODY_BOTTOM) {
+          y = drawSection("Daily Records (cont.)", dailyCols, startBodyOnNewPage());
         }
         const user = r.userId as any;
-        const row = [
+        const values = [
           formatDate(r.date),
-          user.name || "Unknown",
+          user?.name || "Unknown",
           formatTime(r.clockIn),
           formatTime(r.clockOut),
-          r.totalHours ? r.totalHours.toFixed(1) + "h" : "—",
-          r.status,
+          r.totalHours ? `${r.totalHours.toFixed(1)}h` : "—",
+          r.status || "—",
         ];
-        row.forEach((val, i) => doc.text(val, detailCols[i], y + 3, { width: 80 }));
-        y += 18;
-        doc.moveTo(40, y).lineTo(555, y).strokeColor("#E5E7EB").lineWidth(0.3).stroke();
+        drawRow(dailyCols, values, y, rowIdx, r.status || undefined);
+        y += ROW_HEIGHT;
+        rowIdx++;
       }
-
-      // Footer
-      doc.fontSize(8).fillColor("#9CA3AF").text(
-        `Generated on ${new Date().toLocaleString("en-IN")} — United Nexa Tech Employee Portal`,
-        40, doc.page.height - 30,
-        { align: "center", width: 515 }
-      );
+      if (report.allRecords.length === 0) {
+        doc.font("Helvetica-Oblique").fontSize(9).fillColor("#6B7280")
+          .text("No daily records for this period.", MARGIN + 6, y + 6, { width: CONTENT_W - 12, lineBreak: false });
+      }
 
       doc.end();
     } catch (error) { next(error); }

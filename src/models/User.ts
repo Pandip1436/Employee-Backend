@@ -46,6 +46,11 @@ const userSchema = new Schema(
       type: Boolean,
       default: true,
     },
+    userStatus: {
+      type: String,
+      enum: ["online", "away", "dnd"],
+      default: "online",
+    },
     activeToken: {
       type: String,
       select: false,

@@ -1,6 +1,6 @@
 import jwt from "jsonwebtoken";
 import User from "../models/User";
-import { IUser } from "../types";
+import { IUser, UserStatus } from "../types";
 import { ApiError } from "../utils/ApiError";
 
 export class AuthService {
@@ -66,5 +66,15 @@ export class AuthService {
 
   static async logout(userId: string): Promise<void> {
     await User.updateOne({ _id: userId }, { $unset: { activeToken: 1 } });
+  }
+
+  static async updateStatus(userId: string, status: UserStatus): Promise<IUser> {
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { userStatus: status },
+      { new: true, runValidators: true },
+    );
+    if (!user) throw new ApiError(404, "User not found.");
+    return user;
   }
 }
