@@ -60,4 +60,26 @@ export class RecognitionController {
       res.json({ success: true, data: rec });
     } catch (e) { next(e); }
   }
+
+  static async update(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const updates: Record<string, unknown> = {};
+      if (typeof req.body.message === "string") updates.message = req.body.message;
+      if (typeof req.body.badge === "string") updates.badge = req.body.badge;
+      const rec = await Recognition.findByIdAndUpdate(req.params.id as string, updates, { new: true })
+        .populate("fromUser", "name email department")
+        .populate("toUser", "name email department")
+        .populate("comments.userId", "name");
+      if (!rec) { res.status(404).json({ success: false, message: "Not found." }); return; }
+      res.json({ success: true, data: rec });
+    } catch (e) { next(e); }
+  }
+
+  static async remove(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const rec = await Recognition.findByIdAndDelete(req.params.id as string);
+      if (!rec) { res.status(404).json({ success: false, message: "Not found." }); return; }
+      res.json({ success: true });
+    } catch (e) { next(e); }
+  }
 }

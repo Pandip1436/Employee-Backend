@@ -477,10 +477,15 @@ export class AttendanceService {
       if (adminIds.length) filter.userId = { $nin: adminIds };
     }
 
-    const records = await Attendance.find(filter)
+    const rawRecords = await Attendance.find(filter)
       .populate("userId", "name email department")
       .sort("date")
       .lean();
+
+    // Drop orphan records whose user reference no longer resolves (e.g. user deleted).
+    // Without this, .populate() returns userId: null and the loop below would throw
+    // when reading user.name / user._id, producing a 500 for the whole report.
+    const records = rawRecords.filter((r) => r.userId != null);
 
     const grouped: Record<
       string,
@@ -499,7 +504,8 @@ export class AttendanceService {
 
     for (const r of records) {
       const user = r.userId as any;
-      const uid = user._id?.toString() || String(r.userId);
+      const uid = user?._id?.toString();
+      if (!uid) continue;
       if (!grouped[uid]) {
         grouped[uid] = {
           name: user.name || "Unknown",
