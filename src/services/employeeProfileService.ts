@@ -111,6 +111,19 @@ export class EmployeeProfileService {
     return this.getByUserId(userId, true);
   }
 
+  static async deleteProfilePhoto(userId: string) {
+    const profile = await EmployeeProfile.findOne({ userId });
+    if (!profile) throw new ApiError(404, "Profile not found.");
+    const oldKey = profile.profilePhoto;
+    profile.profilePhoto = undefined;
+    await profile.save();
+    if (oldKey) {
+      // Best effort — don't fail the request if the storage delete errors
+      StorageService.delete(oldKey).catch(() => {});
+    }
+    return this.getByUserId(userId, true);
+  }
+
   static async deleteCertificate(userId: string, index: number) {
     const profile = await EmployeeProfile.findOne({ userId });
     if (!profile) throw new ApiError(404, "Profile not found.");

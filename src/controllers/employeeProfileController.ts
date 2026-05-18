@@ -68,6 +68,13 @@ export class EmployeeProfileController {
     } catch (error) { next(error); }
   }
 
+  static async deletePhoto(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const profile = await EmployeeProfileService.deleteProfilePhoto(req.user!._id.toString());
+      res.status(200).json({ success: true, message: "Profile photo removed.", data: profile });
+    } catch (error) { next(error); }
+  }
+
   static async deleteCertificate(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const index = parseInt(req.params.index as string, 10);
