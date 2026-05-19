@@ -215,21 +215,13 @@ export class AttendanceService {
 
     const employees = allUsers.map((u) => {
       const record = clockedInMap.get(u._id.toString());
-      let liveStatus: "clocked-in" | "clocked-out" | "not-marked" | "late" | "absent" | "on-leave" = "not-marked";
+      let liveStatus: "clocked-in" | "clocked-out" | "not-marked" | "late" = "not-marked";
 
       if (record) {
         if (record.clockIn && !record.clockOut) {
-          // Currently working — late or on-time
           liveStatus = record.status === "late" ? "late" : "clocked-in";
         } else if (record.clockOut) {
-          // Shift complete — keep "clocked-out" even if final status was downgraded
-          // to half-day/absent at clock-out time; the table column "Status" shows the
-          // full classification, the chip shows their live presence.
           liveStatus = "clocked-out";
-        } else if (record.status === "on-leave") {
-          liveStatus = "on-leave";
-        } else if (record.status === "absent") {
-          liveStatus = "absent";
         }
       }
 
@@ -254,8 +246,6 @@ export class AttendanceService {
       late: employees.filter((e) => e.liveStatus === "late").length,
       clockedOut: employees.filter((e) => e.liveStatus === "clocked-out").length,
       notMarked: employees.filter((e) => e.liveStatus === "not-marked").length,
-      onLeave: employees.filter((e) => e.liveStatus === "on-leave").length,
-      absent: employees.filter((e) => e.liveStatus === "absent").length,
     };
 
     return { summary, employees };
