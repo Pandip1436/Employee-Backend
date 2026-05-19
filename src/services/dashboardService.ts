@@ -16,7 +16,7 @@ export class DashboardService {
     const today = AttendanceService.getToday();
 
     const [attendance, todayRecord, leaves, monthAttendance, holidays, settings] = await Promise.all([
-      Attendance.countDocuments({ userId, date: { $gte: monthStart }, status: { $in: ["present", "late"] } }),
+      Attendance.countDocuments({ userId, date: { $gte: monthStart }, status: { $in: ["present", "late", "half-day"] } }),
       Attendance.findOne({ userId, date: today }),
       Leave.find({ userId, status: "approved", startDate: { $gte: monthStart } }),
       Attendance.find({ userId, date: { $gte: monthStart } }).select("totalHours"),
@@ -52,14 +52,23 @@ export class DashboardService {
   static async getManagerStats() {
     const now = new Date();
 
-    const [pendingLeaves, pendingTimesheets, totalEmployees, todayPresent] = await Promise.all([
+    const [pendingLeaves, pendingTimesheets, totalEmployees, statusCounts] = await Promise.all([
       Leave.countDocuments({ status: "pending" }),
       WeeklyTimesheet.countDocuments({ status: "submitted" }),
       User.countDocuments({ isActive: true, role: { $ne: "admin" } }),
-      Attendance.countDocuments({ date: AttendanceService.getToday(), status: { $in: ["present", "late"] } }),
+      Attendance.aggregate([
+        { $match: { date: AttendanceService.getToday() } },
+        { $group: { _id: "$status", count: { $sum: 1 } } },
+      ]),
     ]);
 
-    return { pendingLeaves, pendingTimesheets, totalEmployees, todayPresent, todayAbsent: totalEmployees - todayPresent };
+    const sc: Record<string, number> = Object.fromEntries(statusCounts.map((s: any) => [s._id, s.count]));
+    const todayPresent = (sc.present || 0) + (sc.late || 0) + (sc["half-day"] || 0);
+    const todayOnLeave = sc["on-leave"] || 0;
+    const todayAbsent = sc.absent || 0;
+    const todayNotMarked = Math.max(0, totalEmployees - todayPresent - todayOnLeave - todayAbsent);
+
+    return { pendingLeaves, pendingTimesheets, totalEmployees, todayPresent, todayOnLeave, todayAbsent, todayNotMarked };
   }
 
   // ── HR Stats ──
@@ -70,7 +79,7 @@ export class DashboardService {
 
     // HR dashboard counts the workforce only — admins are staff of the system, not part of the workforce metrics.
     const nonAdminFilter = { role: { $ne: "admin" } } as const;
-    const [totalEmployees, activeEmployees, newJoiners, leaveStats, todayPresent] = await Promise.all([
+    const [totalEmployees, activeEmployees, newJoiners, leaveStats, statusCounts] = await Promise.all([
       User.countDocuments(nonAdminFilter),
       User.countDocuments({ isActive: true, ...nonAdminFilter }),
       User.find({ createdAt: { $gte: monthStart }, isActive: true, ...nonAdminFilter }).select("name email department createdAt").sort("-createdAt").limit(10).lean(),
@@ -78,8 +87,17 @@ export class DashboardService {
         { $match: { status: "approved", startDate: { $gte: yearStart } } },
         { $group: { _id: "$type", totalDays: { $sum: "$days" }, count: { $sum: 1 } } },
       ]),
-      Attendance.countDocuments({ date: AttendanceService.getToday(), status: { $in: ["present", "late"] } }),
+      Attendance.aggregate([
+        { $match: { date: AttendanceService.getToday() } },
+        { $group: { _id: "$status", count: { $sum: 1 } } },
+      ]),
     ]);
+
+    const sc: Record<string, number> = Object.fromEntries(statusCounts.map((s: any) => [s._id, s.count]));
+    const todayPresent = (sc.present || 0) + (sc.late || 0) + (sc["half-day"] || 0);
+    const todayOnLeave = sc["on-leave"] || 0;
+    const todayAbsent = sc.absent || 0;
+    const todayNotMarked = Math.max(0, activeEmployees - todayPresent - todayOnLeave - todayAbsent);
 
     return {
       totalEmployees,
@@ -88,7 +106,9 @@ export class DashboardService {
       newJoinersThisMonth: newJoiners,
       leaveStats,
       todayPresent,
-      todayAbsent: Math.max(0, activeEmployees - todayPresent),
+      todayOnLeave,
+      todayAbsent,
+      todayNotMarked,
       attritionRate: totalEmployees > 0 ? parseFloat(((totalEmployees - activeEmployees) / totalEmployees * 100).toFixed(1)) : 0,
     };
   }
