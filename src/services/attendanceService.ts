@@ -142,7 +142,7 @@ export class AttendanceService {
 
     if (record.totalHours < 4) {
       record.status = "absent";
-    } else if (record.totalHours <= 6) {
+    } else if (record.totalHours < 5) {
       record.status = "half-day";
     }
 
@@ -209,12 +209,26 @@ export class AttendanceService {
     const User = (await import("../models/User")).default;
     const allUsers = await User.find({ isActive: true, role: { $ne: "admin" } }).select("name email department role userStatus").lean();
 
+    // Approved leaves that cover the target date — used to surface on-leave
+    // employees even when the auto-mark cron hasn't created an attendance row yet
+    // (e.g. before the cron fires, historical dates, or leaves approved after the
+    // cron ran for that date).
+    const approvedLeaves = await Leave.find({
+      status: "approved",
+      startDate: { $lte: dayEnd },
+      endDate: { $gte: dayStart },
+    })
+      .select("userId")
+      .lean();
+    const onLeaveUserIds = new Set(approvedLeaves.map((l) => l.userId.toString()));
+
     const clockedInMap = new Map(
       records.map((r) => [(r.userId as any)._id.toString(), r])
     );
 
     const employees = allUsers.map((u) => {
-      const record = clockedInMap.get(u._id.toString());
+      const userId = u._id.toString();
+      const record = clockedInMap.get(userId);
       type LiveStatus =
         | "clocked-in"
         | "clocked-out"
@@ -237,6 +251,16 @@ export class AttendanceService {
           liveStatus = "absent";
         }
         // else: row exists but no clockIn/clockOut and non-actionable status -> fall through to not-marked
+      }
+
+      // Approved leave overrides not-marked / absent — they were never expected
+      // to clock in today. Don't override an actual clock-in or clock-out, which
+      // would be evidence of attendance regardless of an open leave.
+      if (
+        onLeaveUserIds.has(userId) &&
+        (liveStatus === "not-marked" || liveStatus === "absent")
+      ) {
+        liveStatus = "on-leave";
       }
 
       return {
@@ -344,7 +368,7 @@ export class AttendanceService {
       );
       if (record.totalHours < 4) {
         record.status = "absent";
-      } else if (record.totalHours <= 6) {
+      } else if (record.totalHours < 5) {
         record.status = "half-day";
       }
       record.notes = (record.notes ? record.notes + " | " : "") + `Auto clock-out at ${autoTimeLabel}`;
