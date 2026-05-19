@@ -207,7 +207,7 @@ export class AttendanceService {
 
     // All active users excluding admins (admins are not required to mark attendance)
     const User = (await import("../models/User")).default;
-    const allUsers = await User.find({ isActive: true, role: { $ne: "admin" } }).select("name email department role userStatus").lean();
+    const allUsers = await User.find({ isActive: true, role: { $ne: "admin" } }).select("name email department role userStatus userId").lean();
 
     // Approved leaves that cover the target date — used to surface on-leave
     // employees even when the auto-mark cron hasn't created an attendance row yet
@@ -265,6 +265,7 @@ export class AttendanceService {
 
       return {
         _id: u._id,
+        userId: (u as any).userId || null,
         name: u.name,
         email: u.email,
         department: u.department,
@@ -522,7 +523,7 @@ export class AttendanceService {
     }
 
     const rawRecords = await Attendance.find(filter)
-      .populate("userId", "name email department")
+      .populate("userId", "name email department userId")
       .sort("date")
       .lean();
 
@@ -537,6 +538,7 @@ export class AttendanceService {
         name: string;
         email: string;
         department: string;
+        userId: string | null;
         records: typeof records;
         totalHours: number;
         presentDays: number;
@@ -555,6 +557,7 @@ export class AttendanceService {
           name: user.name || "Unknown",
           email: user.email || "",
           department: user.department || "",
+          userId: user.userId || null,
           records: [],
           totalHours: 0,
           presentDays: 0,
