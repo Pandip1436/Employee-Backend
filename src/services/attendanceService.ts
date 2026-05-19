@@ -215,14 +215,28 @@ export class AttendanceService {
 
     const employees = allUsers.map((u) => {
       const record = clockedInMap.get(u._id.toString());
-      let liveStatus: "clocked-in" | "clocked-out" | "not-marked" | "late" = "not-marked";
+      type LiveStatus =
+        | "clocked-in"
+        | "clocked-out"
+        | "late"
+        | "absent"
+        | "on-leave"
+        | "not-marked";
+      let liveStatus: LiveStatus = "not-marked";
 
       if (record) {
-        if (record.clockIn && !record.clockOut) {
+        if (record.status === "on-leave") {
+          liveStatus = "on-leave";
+        } else if (record.clockIn && !record.clockOut) {
           liveStatus = record.status === "late" ? "late" : "clocked-in";
         } else if (record.clockOut) {
+          // half-day is a sub-classification — still surfaces as "logged out" here.
           liveStatus = "clocked-out";
+        } else if (record.status === "absent") {
+          // Auto-marked absent row (no clock-in)
+          liveStatus = "absent";
         }
+        // else: row exists but no clockIn/clockOut and non-actionable status -> fall through to not-marked
       }
 
       return {
@@ -240,12 +254,18 @@ export class AttendanceService {
       };
     });
 
+    const countBy = (s: string) => employees.filter((e) => e.liveStatus === s).length;
+    // halfDay is a sub-count within clocked-out, derived from the attendance row's status.
+    const halfDay = employees.filter((e) => e.status === "half-day").length;
     const summary = {
       total: allUsers.length,
-      clockedIn: employees.filter((e) => e.liveStatus === "clocked-in").length,
-      late: employees.filter((e) => e.liveStatus === "late").length,
-      clockedOut: employees.filter((e) => e.liveStatus === "clocked-out").length,
-      notMarked: employees.filter((e) => e.liveStatus === "not-marked").length,
+      clockedIn: countBy("clocked-in"),
+      late: countBy("late"),
+      clockedOut: countBy("clocked-out"),
+      halfDay,
+      absent: countBy("absent"),
+      onLeave: countBy("on-leave"),
+      notMarked: countBy("not-marked"),
     };
 
     return { summary, employees };

@@ -6,6 +6,16 @@ import WeeklyTimesheet from "../models/WeeklyTimesheet";
 import CompanySettings from "../models/CompanySettings";
 import { AttendanceService, isWorkingDow } from "./attendanceService";
 
+type StatusCount = { _id: string; count: number };
+
+function bucketizeStatusCounts(rows: StatusCount[]) {
+  const by = (s: string) => rows.find((r) => r._id === s)?.count ?? 0;
+  const present = by("present") + by("late") + by("half-day");
+  const absent = by("absent");
+  const onLeave = by("on-leave");
+  return { present, absent, onLeave, recorded: present + absent + onLeave };
+}
+
 export class DashboardService {
   // ── Employee KPIs ──
   static async getEmployeeKpis(userId: string) {
@@ -50,16 +60,33 @@ export class DashboardService {
 
   // ── Manager Stats ──
   static async getManagerStats() {
-    const now = new Date();
+    const today = AttendanceService.getToday();
 
-    const [pendingLeaves, pendingTimesheets, totalEmployees, todayPresent] = await Promise.all([
+    const [pendingLeaves, pendingTimesheets, totalEmployees, statusCounts] = await Promise.all([
       Leave.countDocuments({ status: "pending" }),
       WeeklyTimesheet.countDocuments({ status: "submitted" }),
       User.countDocuments({ isActive: true, role: { $ne: "admin" } }),
-      Attendance.countDocuments({ date: AttendanceService.getToday(), status: { $in: ["present", "late"] } }),
+      Attendance.aggregate([
+        { $match: { date: today } },
+        { $lookup: { from: "users", localField: "userId", foreignField: "_id", as: "user" } },
+        { $unwind: "$user" },
+        { $match: { "user.isActive": true, "user.role": { $ne: "admin" } } },
+        { $group: { _id: "$status", count: { $sum: 1 } } },
+      ]),
     ]);
 
-    return { pendingLeaves, pendingTimesheets, totalEmployees, todayPresent, todayAbsent: totalEmployees - todayPresent };
+    const buckets = bucketizeStatusCounts(statusCounts);
+    const todayNotMarked = Math.max(0, totalEmployees - buckets.recorded);
+
+    return {
+      pendingLeaves,
+      pendingTimesheets,
+      totalEmployees,
+      todayPresent: buckets.present,
+      todayAbsent: buckets.absent,
+      todayOnLeave: buckets.onLeave,
+      todayNotMarked,
+    };
   }
 
   // ── HR Stats ──
@@ -70,7 +97,8 @@ export class DashboardService {
 
     // HR dashboard counts the workforce only — admins are staff of the system, not part of the workforce metrics.
     const nonAdminFilter = { role: { $ne: "admin" } } as const;
-    const [totalEmployees, activeEmployees, newJoiners, leaveStats, todayPresent] = await Promise.all([
+    const today = AttendanceService.getToday();
+    const [totalEmployees, activeEmployees, newJoiners, leaveStats, statusCounts] = await Promise.all([
       User.countDocuments(nonAdminFilter),
       User.countDocuments({ isActive: true, ...nonAdminFilter }),
       User.find({ createdAt: { $gte: monthStart }, isActive: true, ...nonAdminFilter }).select("name email department createdAt").sort("-createdAt").limit(10).lean(),
@@ -78,8 +106,17 @@ export class DashboardService {
         { $match: { status: "approved", startDate: { $gte: yearStart } } },
         { $group: { _id: "$type", totalDays: { $sum: "$days" }, count: { $sum: 1 } } },
       ]),
-      Attendance.countDocuments({ date: AttendanceService.getToday(), status: { $in: ["present", "late"] } }),
+      Attendance.aggregate([
+        { $match: { date: today } },
+        { $lookup: { from: "users", localField: "userId", foreignField: "_id", as: "user" } },
+        { $unwind: "$user" },
+        { $match: { "user.isActive": true, "user.role": { $ne: "admin" } } },
+        { $group: { _id: "$status", count: { $sum: 1 } } },
+      ]),
     ]);
+
+    const buckets = bucketizeStatusCounts(statusCounts);
+    const todayNotMarked = Math.max(0, activeEmployees - buckets.recorded);
 
     return {
       totalEmployees,
@@ -87,8 +124,10 @@ export class DashboardService {
       inactiveEmployees: totalEmployees - activeEmployees,
       newJoinersThisMonth: newJoiners,
       leaveStats,
-      todayPresent,
-      todayAbsent: Math.max(0, activeEmployees - todayPresent),
+      todayPresent: buckets.present,
+      todayAbsent: buckets.absent,
+      todayOnLeave: buckets.onLeave,
+      todayNotMarked,
       attritionRate: totalEmployees > 0 ? parseFloat(((totalEmployees - activeEmployees) / totalEmployees * 100).toFixed(1)) : 0,
     };
   }
