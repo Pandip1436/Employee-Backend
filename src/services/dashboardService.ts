@@ -6,14 +6,50 @@ import WeeklyTimesheet from "../models/WeeklyTimesheet";
 import CompanySettings from "../models/CompanySettings";
 import { AttendanceService, isWorkingDow } from "./attendanceService";
 
-type StatusCount = { _id: string; count: number };
+/** Compute today's attendance buckets for the active non-admin workforce,
+ *  overlaying approved leaves so employees on leave surface as on-leave even
+ *  when the auto-mark cron hasn't created a row yet for that day. */
+async function computeTodayBuckets(date: Date): Promise<{
+  present: number;
+  absent: number;
+  onLeave: number;
+  notMarked: number;
+  activeWorkforce: number;
+}> {
+  const [users, attendance, leaves] = await Promise.all([
+    User.find({ isActive: true, role: { $ne: "admin" } }).select("_id").lean(),
+    Attendance.find({ date }).select("userId status").lean(),
+    Leave.find({
+      status: "approved",
+      startDate: { $lte: date },
+      endDate: { $gte: date },
+    }).select("userId").lean(),
+  ]);
 
-function bucketizeStatusCounts(rows: StatusCount[]) {
-  const by = (s: string) => rows.find((r) => r._id === s)?.count ?? 0;
-  const present = by("present") + by("late") + by("half-day");
-  const absent = by("absent");
-  const onLeave = by("on-leave");
-  return { present, absent, onLeave, recorded: present + absent + onLeave };
+  const statusByUser = new Map<string, string>(
+    attendance.map((a) => [a.userId.toString(), a.status])
+  );
+  const onLeaveUserIds = new Set(leaves.map((l) => l.userId.toString()));
+
+  let present = 0, absent = 0, onLeave = 0, notMarked = 0;
+  for (const u of users) {
+    const uid = u._id.toString();
+    const status = statusByUser.get(uid);
+    const hasApprovedLeave = onLeaveUserIds.has(uid);
+
+    if (status === "present" || status === "late" || status === "half-day") {
+      // Real attendance wins over a leave on the books.
+      present++;
+    } else if (status === "on-leave" || hasApprovedLeave) {
+      onLeave++;
+    } else if (status === "absent") {
+      absent++;
+    } else {
+      notMarked++;
+    }
+  }
+
+  return { present, absent, onLeave, notMarked, activeWorkforce: users.length };
 }
 
 export class DashboardService {
@@ -62,30 +98,20 @@ export class DashboardService {
   static async getManagerStats() {
     const today = AttendanceService.getToday();
 
-    const [pendingLeaves, pendingTimesheets, totalEmployees, statusCounts] = await Promise.all([
+    const [pendingLeaves, pendingTimesheets, buckets] = await Promise.all([
       Leave.countDocuments({ status: "pending" }),
       WeeklyTimesheet.countDocuments({ status: "submitted" }),
-      User.countDocuments({ isActive: true, role: { $ne: "admin" } }),
-      Attendance.aggregate([
-        { $match: { date: today } },
-        { $lookup: { from: "users", localField: "userId", foreignField: "_id", as: "user" } },
-        { $unwind: "$user" },
-        { $match: { "user.isActive": true, "user.role": { $ne: "admin" } } },
-        { $group: { _id: "$status", count: { $sum: 1 } } },
-      ]),
+      computeTodayBuckets(today),
     ]);
-
-    const buckets = bucketizeStatusCounts(statusCounts);
-    const todayNotMarked = Math.max(0, totalEmployees - buckets.recorded);
 
     return {
       pendingLeaves,
       pendingTimesheets,
-      totalEmployees,
+      totalEmployees: buckets.activeWorkforce,
       todayPresent: buckets.present,
       todayAbsent: buckets.absent,
       todayOnLeave: buckets.onLeave,
-      todayNotMarked,
+      todayNotMarked: buckets.notMarked,
     };
   }
 
@@ -98,7 +124,7 @@ export class DashboardService {
     // HR dashboard counts the workforce only — admins are staff of the system, not part of the workforce metrics.
     const nonAdminFilter = { role: { $ne: "admin" } } as const;
     const today = AttendanceService.getToday();
-    const [totalEmployees, activeEmployees, newJoiners, leaveStats, statusCounts] = await Promise.all([
+    const [totalEmployees, activeEmployees, newJoiners, leaveStats, buckets] = await Promise.all([
       User.countDocuments(nonAdminFilter),
       User.countDocuments({ isActive: true, ...nonAdminFilter }),
       User.find({ createdAt: { $gte: monthStart }, isActive: true, ...nonAdminFilter }).select("name email department createdAt").sort("-createdAt").limit(10).lean(),
@@ -106,17 +132,8 @@ export class DashboardService {
         { $match: { status: "approved", startDate: { $gte: yearStart } } },
         { $group: { _id: "$type", totalDays: { $sum: "$days" }, count: { $sum: 1 } } },
       ]),
-      Attendance.aggregate([
-        { $match: { date: today } },
-        { $lookup: { from: "users", localField: "userId", foreignField: "_id", as: "user" } },
-        { $unwind: "$user" },
-        { $match: { "user.isActive": true, "user.role": { $ne: "admin" } } },
-        { $group: { _id: "$status", count: { $sum: 1 } } },
-      ]),
+      computeTodayBuckets(today),
     ]);
-
-    const buckets = bucketizeStatusCounts(statusCounts);
-    const todayNotMarked = Math.max(0, activeEmployees - buckets.recorded);
 
     return {
       totalEmployees,
@@ -127,7 +144,7 @@ export class DashboardService {
       todayPresent: buckets.present,
       todayAbsent: buckets.absent,
       todayOnLeave: buckets.onLeave,
-      todayNotMarked,
+      todayNotMarked: buckets.notMarked,
       attritionRate: totalEmployees > 0 ? parseFloat(((totalEmployees - activeEmployees) / totalEmployees * 100).toFixed(1)) : 0,
     };
   }
