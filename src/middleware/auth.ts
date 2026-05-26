@@ -13,7 +13,7 @@ export const authenticate = async (
     const authHeader = req.headers.authorization;
 
     if (!authHeader?.startsWith("Bearer ")) {
-      throw new ApiError(401, "Access denied. No token provided.");
+      throw new ApiError(401, "Please sign in to continue.");
     }
 
     const token = authHeader.split(" ")[1];
@@ -23,12 +23,12 @@ export const authenticate = async (
 
     const user = await User.findById(decoded.id).select("+password +activeToken");
     if (!user || !user.isActive) {
-      throw new ApiError(401, "User not found or deactivated.");
+      throw new ApiError(401, "We couldn't sign you in. This account may have been deactivated — please contact your admin.");
     }
 
     // Check if this token matches the active session
     if (user.activeToken && user.activeToken !== token) {
-      throw new ApiError(401, "Session expired. You have been logged in from another device.");
+      throw new ApiError(401, "You've signed in from another device. This session has ended — please sign in again.");
     }
 
     req.user = user;
@@ -37,7 +37,7 @@ export const authenticate = async (
     if (error instanceof ApiError) {
       next(error);
     } else {
-      next(new ApiError(401, "Invalid or expired token."));
+      next(new ApiError(401, "Your session has expired. Please sign in again."));
     }
   }
 };
