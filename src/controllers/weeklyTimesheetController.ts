@@ -3,6 +3,49 @@ import ExcelJS from "exceljs";
 import { WeeklyTimesheetService } from "../services/weeklyTimesheetService";
 import { AuditService } from "../services/auditService";
 import { AuthRequest } from "../types";
+import Leave from "../models/Leave";
+import Holiday from "../models/Holiday";
+
+const LEAVE_DAY_HOURS = 9;
+const HOLIDAY_DAY_HOURS = 9;
+
+// Compute approved leave hours for a specific user across a given week.
+function computeLeaveHours(
+  userLeaves: Array<{ startDate: Date; endDate: Date }>,
+  weekStart: Date
+): number {
+  const start = new Date(weekStart);
+  start.setHours(0, 0, 0, 0);
+  let hours = 0;
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    const dMs = d.getTime();
+    const covered = userLeaves.some((l) => {
+      const s = new Date(l.startDate);
+      const e = new Date(l.endDate);
+      const sMs = new Date(s.getFullYear(), s.getMonth(), s.getDate()).getTime();
+      const eMs = new Date(e.getFullYear(), e.getMonth(), e.getDate()).getTime();
+      return dMs >= sMs && dMs <= eMs;
+    });
+    if (covered) hours += LEAVE_DAY_HOURS;
+  }
+  return hours;
+}
+
+// Compute holiday hours that fall within a given week.
+function computeHolidayHours(holidayDateMs: Set<number>, weekStart: Date): number {
+  const start = new Date(weekStart);
+  start.setHours(0, 0, 0, 0);
+  let hours = 0;
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    const dMs = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    if (holidayDateMs.has(dMs)) hours += HOLIDAY_DAY_HOURS;
+  }
+  return hours;
+}
 
 export class WeeklyTimesheetController {
   static async getCurrentWeek(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
@@ -106,14 +149,17 @@ export class WeeklyTimesheetController {
 
       // Column definitions with proper widths AND number formats so dates render as dates.
       sheet.columns = [
-        { header: "Employee",     key: "name",        width: 26 },
-        { header: "Email",        key: "email",       width: 32 },
-        { header: "Department",   key: "department",  width: 24 },
-        { header: "Week Start",   key: "weekStart",   width: 14, style: { numFmt: "yyyy-mm-dd" } },
-        { header: "Week End",     key: "weekEnd",     width: 14, style: { numFmt: "yyyy-mm-dd" } },
-        { header: "Total Hours",  key: "totalHours",  width: 13, style: { numFmt: "0.0" } },
-        { header: "Status",       key: "status",      width: 13 },
-        { header: "Submitted At", key: "submittedAt", width: 20, style: { numFmt: "yyyy-mm-dd hh:mm" } },
+        { header: "Employee",      key: "name",          width: 26 },
+        { header: "Email",         key: "email",         width: 32 },
+        { header: "Department",    key: "department",    width: 24 },
+        { header: "Week Start",    key: "weekStart",     width: 14, style: { numFmt: "yyyy-mm-dd" } },
+        { header: "Week End",      key: "weekEnd",       width: 14, style: { numFmt: "yyyy-mm-dd" } },
+        { header: "Work Hours",    key: "workHours",     width: 12, style: { numFmt: "0.0" } },
+        { header: "Leave Hours",   key: "leaveHours",    width: 12, style: { numFmt: "0.0" } },
+        { header: "Holiday Hours", key: "holidayHours",  width: 13, style: { numFmt: "0.0" } },
+        { header: "Total Hours",   key: "totalHours",    width: 12, style: { numFmt: "0.0" } },
+        { header: "Status",        key: "status",        width: 13 },
+        { header: "Submitted At",  key: "submittedAt",   width: 20, style: { numFmt: "yyyy-mm-dd hh:mm" } },
       ];
 
       // Header row styling
@@ -126,16 +172,57 @@ export class WeeklyTimesheetController {
         cell.border = { bottom: { style: "thin", color: { argb: "FFC7D2FE" } } };
       });
 
+      // Fetch approved leaves + holidays covering the exported date range so we
+      // can overlay them onto each week row. Bound by 7 days on either side to
+      // catch leaves that straddle a week boundary.
+      const rangeStart = data.length ? new Date(Math.min(...data.map((d) => new Date(d.weekStart).getTime()))) : null;
+      const rangeEnd = data.length ? new Date(Math.max(...data.map((d) => new Date(d.weekEnd).getTime()))) : null;
+      const leaveBuffer = 7 * 24 * 60 * 60 * 1000;
+      const leaveFilter: Record<string, unknown> = { status: "approved" };
+      const holidayFilter: Record<string, unknown> = {};
+      if (rangeStart && rangeEnd) {
+        leaveFilter.endDate = { $gte: new Date(rangeStart.getTime() - leaveBuffer) };
+        leaveFilter.startDate = { $lte: new Date(rangeEnd.getTime() + leaveBuffer) };
+        holidayFilter.date = { $gte: rangeStart, $lte: rangeEnd };
+      }
+      const [approvedLeaves, holidayList] = await Promise.all([
+        Leave.find(leaveFilter).select("userId startDate endDate").lean(),
+        Holiday.find(holidayFilter).select("date").lean(),
+      ]);
+
+      // Index leaves by userId for O(1) per-row lookup.
+      const leavesByUser = new Map<string, Array<{ startDate: Date; endDate: Date }>>();
+      for (const l of approvedLeaves) {
+        const key = l.userId.toString();
+        if (!leavesByUser.has(key)) leavesByUser.set(key, []);
+        leavesByUser.get(key)!.push({ startDate: new Date(l.startDate), endDate: new Date(l.endDate) });
+      }
+      const holidayDateMs = new Set<number>(
+        holidayList.map((h) => {
+          const d = new Date(h.date);
+          return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+        })
+      );
+
       // Body rows — pass real Date objects for date columns so Excel formats correctly.
       for (const ts of data) {
         const user = (ts as any).userId;
+        const uid = user?._id?.toString() || (ts.userId as any)?.toString() || "";
+        const userLeaves = leavesByUser.get(uid) || [];
+        const weekStart = ts.weekStart ? new Date(ts.weekStart) : new Date();
+        const leaveHours = computeLeaveHours(userLeaves, weekStart);
+        const holidayHours = computeHolidayHours(holidayDateMs, weekStart);
+        const workHours = typeof ts.totalHours === "number" ? ts.totalHours : 0;
         sheet.addRow({
           name: user?.name || "",
           email: user?.email || "",
           department: user?.department || "",
           weekStart: ts.weekStart ? new Date(ts.weekStart) : null,
           weekEnd: ts.weekEnd ? new Date(ts.weekEnd) : null,
-          totalHours: typeof ts.totalHours === "number" ? ts.totalHours : 0,
+          workHours,
+          leaveHours,
+          holidayHours,
+          totalHours: workHours + leaveHours + holidayHours,
           status: ts.status,
           submittedAt: ts.submittedAt ? new Date(ts.submittedAt) : null,
         });
@@ -152,6 +239,9 @@ export class WeeklyTimesheetController {
 
       // Status column — center align
       sheet.getColumn("status").alignment = { horizontal: "center" };
+      sheet.getColumn("workHours").alignment = { horizontal: "right" };
+      sheet.getColumn("leaveHours").alignment = { horizontal: "right" };
+      sheet.getColumn("holidayHours").alignment = { horizontal: "right" };
       sheet.getColumn("totalHours").alignment = { horizontal: "right" };
 
       AuditService.log({

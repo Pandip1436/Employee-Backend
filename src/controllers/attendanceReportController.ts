@@ -102,6 +102,7 @@ export class AttendanceReportController {
         { header: "Late", key: "late", width: 10 },
         { header: "Half Day", key: "halfDay", width: 10 },
         { header: "Absent", key: "absent", width: 10 },
+        { header: "On Leave", key: "onLeave", width: 10 },
         { header: "Total Hours", key: "totalHours", width: 12 },
       ];
 
@@ -122,6 +123,7 @@ export class AttendanceReportController {
           late: emp.lateDays,
           halfDay: emp.halfDays,
           absent: emp.absentDays,
+          onLeave: emp.onLeaveDays || 0,
           totalHours: parseFloat(emp.totalHours.toFixed(2)),
         });
       }
@@ -202,13 +204,14 @@ export class AttendanceReportController {
 
       // Column definitions — widths sum to exactly CONTENT_W (515)
       const summaryCols: Col[] = [
-        { label: "Employee",   width: 140 },
-        { label: "Department", width: 135 },
+        { label: "Employee",   width: 125 },
+        { label: "Department", width: 110 },
         { label: "Present",    width: 45, align: "center" },
-        { label: "Late",       width: 45, align: "center" },
-        { label: "Half",       width: 45, align: "center" },
+        { label: "Late",       width: 40, align: "center" },
+        { label: "Half",       width: 40, align: "center" },
         { label: "Absent",     width: 45, align: "center" },
-        { label: "Hours",      width: 60, align: "right"  },
+        { label: "Leave",      width: 45, align: "center" },
+        { label: "Hours",      width: 65, align: "right"  },
       ];
 
       const dailyCols: Col[] = [
@@ -386,6 +389,7 @@ export class AttendanceReportController {
           String(emp.lateDays),
           String(emp.halfDays),
           String(emp.absentDays),
+          String(emp.onLeaveDays || 0),
           `${emp.totalHours.toFixed(1)}h`,
         ];
         drawRow(summaryCols, values, y, rowIdx);

@@ -213,9 +213,13 @@ export class AttendanceService {
     // employees even when the auto-mark cron hasn't created an attendance row yet
     // (e.g. before the cron fires, historical dates, or leaves approved after the
     // cron ran for that date).
+    // Compare both bounds against dayStart (target day's UTC midnight). Comparing
+    // startDate against dayEnd (= next day's UTC midnight) with $lte was a bug:
+    // a leave stored as 08-05 00:00 UTC matched the 07-05 query, marking the
+    // employee as on-leave the day before.
     const approvedLeaves = await Leave.find({
       status: "approved",
-      startDate: { $lte: dayEnd },
+      startDate: { $lte: dayStart },
       endDate: { $gte: dayStart },
     })
       .select("userId")
@@ -545,8 +549,15 @@ export class AttendanceService {
         lateDays: number;
         absentDays: number;
         halfDays: number;
+        onLeaveDays: number;
+        // Track which date keys we've already counted as on-leave from attendance
+        // records, so the Leave overlay below doesn't double-count.
+        leaveDateKeys: Set<string>;
       }
     > = {};
+
+    const dateKey = (d: Date) =>
+      `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
 
     for (const r of records) {
       const user = r.userId as any;
@@ -564,6 +575,8 @@ export class AttendanceService {
           lateDays: 0,
           absentDays: 0,
           halfDays: 0,
+          onLeaveDays: 0,
+          leaveDateKeys: new Set(),
         };
       }
       grouped[uid].records.push(r);
@@ -572,12 +585,53 @@ export class AttendanceService {
       else if (r.status === "late") grouped[uid].lateDays++;
       else if (r.status === "absent") grouped[uid].absentDays++;
       else if (r.status === "half-day") grouped[uid].halfDays++;
+      else if (r.status === "on-leave") {
+        grouped[uid].onLeaveDays++;
+        grouped[uid].leaveDateKeys.add(dateKey(new Date(r.date)));
+      }
     }
+
+    // Overlay approved leaves on top — covers days where the auto-mark cron
+    // hasn't yet stamped an on-leave row (early in the day, leaves approved
+    // after the cron ran for that date, etc.). Skip dates already counted via
+    // attendance records.
+    const userFilter: Record<string, unknown> = {};
+    if (userId) userFilter.userId = userId;
+    const approvedLeaves = await Leave.find({
+      status: "approved",
+      startDate: { $lte: endDate },
+      endDate: { $gte: startDate },
+      ...userFilter,
+    }).select("userId startDate endDate").lean();
+
+    for (const lv of approvedLeaves) {
+      const uid = lv.userId.toString();
+      if (!grouped[uid]) continue; // user not in the report range
+      const lStart = new Date(lv.startDate);
+      const lEnd = new Date(lv.endDate);
+      // Walk each calendar day in the leave range that overlaps [startDate, endDate]
+      const dayStart = new Date(Math.max(lStart.getTime(), startDate.getTime()));
+      const dayEnd = new Date(Math.min(lEnd.getTime(), endDate.getTime()));
+      // Normalize to UTC midnight to step day-by-day deterministically.
+      let cur = new Date(Date.UTC(dayStart.getUTCFullYear(), dayStart.getUTCMonth(), dayStart.getUTCDate()));
+      const stop = new Date(Date.UTC(dayEnd.getUTCFullYear(), dayEnd.getUTCMonth(), dayEnd.getUTCDate()));
+      while (cur.getTime() <= stop.getTime()) {
+        const key = dateKey(cur);
+        if (!grouped[uid].leaveDateKeys.has(key)) {
+          grouped[uid].onLeaveDays++;
+          grouped[uid].leaveDateKeys.add(key);
+        }
+        cur = new Date(cur.getTime() + 24 * 60 * 60 * 1000);
+      }
+    }
+
+    // Strip the internal Set before returning — it's not serialisable.
+    const employees = Object.values(grouped).map(({ leaveDateKeys: _drop, ...rest }) => rest);
 
     return {
       startDate,
       endDate,
-      employees: Object.values(grouped),
+      employees,
       allRecords: records,
     };
   }
