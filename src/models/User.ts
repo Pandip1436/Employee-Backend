@@ -42,6 +42,15 @@ const userSchema = new Schema(
       type: Boolean,
       default: true,
     },
+    inactiveReason: {
+      type: String,
+      enum: ["resigned", "terminated", "retired", "on-long-leave", "contract-ended", "other", ""],
+      default: "",
+    },
+    relievingDate: {
+      type: String,
+      default: "",
+    },
     autoClockOutEnabled: {
       type: Boolean,
       default: true,

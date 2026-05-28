@@ -33,4 +33,8 @@ export const updateUserSchema = z.object({
   role: z.enum(["admin", "manager", "employee"]).optional(),
   department: z.string().optional(),
   isActive: z.boolean().optional(),
+  inactiveReason: z
+    .enum(["resigned", "terminated", "retired", "on-long-leave", "contract-ended", "other", ""])
+    .optional(),
+  relievingDate: z.string().optional(),
 });

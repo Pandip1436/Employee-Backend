@@ -1,7 +1,41 @@
 import User from "../models/User";
+import EmployeeProfile from "../models/EmployeeProfile";
 import { IUser, PaginatedResult } from "../types";
 import { ApiError } from "../utils/ApiError";
 import { parsePagination } from "../utils/helpers";
+import { StorageService } from "./storageService";
+
+// Attach a signed profilePhotoUrl to each user by looking up their
+// EmployeeProfile.profilePhoto R2 key in a single batched query. Users without
+// a profile photo just get `profilePhotoUrl: undefined`.
+async function attachProfilePhotoUrls<T extends { _id: unknown; toJSON?: () => Record<string, unknown> }>(
+  users: T[]
+): Promise<Array<Record<string, unknown>>> {
+  if (!users.length) return [];
+  const userIds = users.map((u) => u._id as IUser["_id"]);
+  const profiles = await EmployeeProfile.find({ userId: { $in: userIds } })
+    .select("userId profilePhoto")
+    .lean();
+  const keyByUser = new Map<string, string>();
+  for (const p of profiles) {
+    if (p.profilePhoto) keyByUser.set(p.userId.toString(), p.profilePhoto);
+  }
+  return Promise.all(
+    users.map(async (u) => {
+      const obj = u.toJSON ? u.toJSON() : (u as unknown as Record<string, unknown>);
+      const key = keyByUser.get(String(u._id));
+      let profilePhotoUrl: string | undefined;
+      if (key) {
+        try {
+          profilePhotoUrl = await StorageService.getSignedDownloadUrl(key, 3600);
+        } catch {
+          // silent — fall back to no photo
+        }
+      }
+      return { ...obj, profilePhotoUrl };
+    })
+  );
+}
 
 export class UserService {
   static async getAll(query: {
@@ -34,8 +68,10 @@ export class UserService {
       User.countDocuments(filter),
     ]);
 
+    const enriched = await attachProfilePhotoUrls(data) as unknown as IUser[];
+
     return {
-      data,
+      data: enriched,
       pagination: { total, page, limit, pages: Math.ceil(total / limit) },
     };
   }
@@ -80,6 +116,11 @@ export class UserService {
       if (clash) throw new ApiError(409, "User ID is already taken.");
       data.userId = normalized;
     }
+    // Clear inactive metadata when reactivating an account
+    if (Object.prototype.hasOwnProperty.call(data, "isActive") && data.isActive === true) {
+      (data as Record<string, unknown>).inactiveReason = "";
+      (data as Record<string, unknown>).relievingDate = "";
+    }
     const user = await User.findByIdAndUpdate(id, data, {
       new: true,
       runValidators: true,
@@ -106,9 +147,14 @@ export class UserService {
       return { affected: res.deletedCount || 0 };
     }
 
+    const update: Record<string, unknown> = { isActive: action === "activate" };
+    if (action === "activate") {
+      update.inactiveReason = "";
+      update.relievingDate = "";
+    }
     const res = await User.updateMany(
       { _id: { $in: targetIds } },
-      { $set: { isActive: action === "activate" } },
+      { $set: update },
     );
     return { affected: res.modifiedCount || 0 };
   }

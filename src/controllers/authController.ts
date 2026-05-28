@@ -2,6 +2,20 @@ import { Request, Response, NextFunction } from "express";
 import { AuthService } from "../services/authService";
 import { AuditService } from "../services/auditService";
 import { AuthRequest } from "../types";
+import EmployeeProfile from "../models/EmployeeProfile";
+import { StorageService } from "../services/storageService";
+
+// Resolve the current profile photo URL (fresh signed URL) for the given user.
+// Returns undefined if no photo is set or the signing call fails.
+async function getProfilePhotoUrl(userId: string): Promise<string | undefined> {
+  try {
+    const profile = await EmployeeProfile.findOne({ userId }).select("profilePhoto").lean();
+    if (!profile?.profilePhoto) return undefined;
+    return await StorageService.getSignedDownloadUrl(profile.profilePhoto, 3600);
+  } catch {
+    return undefined;
+  }
+}
 
 export class AuthController {
   static async login(
@@ -19,10 +33,12 @@ export class AuthController {
         details: `${user.name} (${user.userId})`,
         ipAddress: req.ip,
       });
+      const profilePhotoUrl = await getProfilePhotoUrl(user._id.toString());
+      const userPayload = { ...(user as any).toJSON?.() ?? user, profilePhotoUrl };
       res.status(200).json({
         success: true,
         message: "Login successful.",
-        data: { user, token },
+        data: { user: userPayload, token },
       });
     } catch (error) {
       next(error);
@@ -34,10 +50,12 @@ export class AuthController {
     res: Response,
     _next: NextFunction
   ): Promise<void> {
+    const profilePhotoUrl = await getProfilePhotoUrl(req.user!._id.toString());
+    const userPayload = { ...(req.user as any).toJSON?.() ?? req.user, profilePhotoUrl };
     res.status(200).json({
       success: true,
       message: "User profile fetched.",
-      data: req.user,
+      data: userPayload,
     });
   }
 

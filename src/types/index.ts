@@ -14,6 +14,8 @@ export interface IUser extends Document {
   role: UserRole;
   department?: string;
   isActive: boolean;
+  inactiveReason?: "resigned" | "terminated" | "retired" | "on-long-leave" | "contract-ended" | "other" | "";
+  relievingDate?: string;
   autoClockOutEnabled?: boolean;
   userStatus?: UserStatus;
   activeToken?: string;
