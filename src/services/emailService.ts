@@ -243,6 +243,96 @@ export class EmailService {
     );
   }
 
+  /**
+   * Auto clock-out notice — sent when the daily cron closes an open attendance
+   * record because the employee forgot to clock out. Goes to BOTH the employee
+   * (so they know) and the admin notification list.
+   */
+  static async sendAutoClockOutNotification(
+    employeeName: string,
+    employeeEmail: string,
+    clockInTime: Date,
+    clockOutTime: Date,
+    totalHours: number
+  ) {
+    const vars = {
+      employeeName,
+      employeeEmail,
+      date: formatDate(clockOutTime),
+      clockInTime: formatTime(clockInTime),
+      clockOutTime: formatTime(clockOutTime),
+      totalHours: `${totalHours}h`,
+    };
+
+    // ── Admin notification (templated → admin list) ──
+    const adminFallbackHtml = `
+      <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 520px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden;">
+        <div style="background: #f59e0b; padding: 20px 24px;">
+          <h2 style="color: #fff; margin: 0; font-size: 18px;">Auto Clock-Out</h2>
+        </div>
+        <div style="padding: 24px;">
+          <div style="background: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px 16px; border-radius: 0 8px 8px 0; margin-bottom: 20px;">
+            <p style="margin: 0; color: #b45309; font-weight: 600;">Employee was auto clocked-out (no manual clock-out)</p>
+          </div>
+          <table style="width: 100%; border-collapse: collapse;">
+            <tr><td style="padding: 8px 0; color: #6b7280; font-size: 14px; width: 120px;">Employee</td><td style="padding: 8px 0; color: #111827; font-size: 14px; font-weight: 600;">${employeeName}</td></tr>
+            <tr><td style="padding: 8px 0; color: #6b7280; font-size: 14px;">Email</td><td style="padding: 8px 0; color: #111827; font-size: 14px;">${employeeEmail}</td></tr>
+            <tr><td style="padding: 8px 0; color: #6b7280; font-size: 14px;">Date</td><td style="padding: 8px 0; color: #111827; font-size: 14px;">${vars.date}</td></tr>
+            <tr><td style="padding: 8px 0; color: #6b7280; font-size: 14px;">Clock In</td><td style="padding: 8px 0; color: #111827; font-size: 14px;">${vars.clockInTime}</td></tr>
+            <tr><td style="padding: 8px 0; color: #6b7280; font-size: 14px;">Auto Clock Out</td><td style="padding: 8px 0; color: #f59e0b; font-size: 16px; font-weight: 700;">${vars.clockOutTime}</td></tr>
+            <tr><td style="padding: 8px 0; color: #6b7280; font-size: 14px;">Total Hours</td><td style="padding: 8px 0; color: #4f46e5; font-size: 16px; font-weight: 700;">${vars.totalHours}</td></tr>
+          </table>
+        </div>
+        <div style="background: #f9fafb; padding: 12px 24px; text-align: center;">
+          <p style="margin: 0; color: #9ca3af; font-size: 12px;">United Nexa Tech — Employee Portal</p>
+        </div>
+      </div>
+    `;
+
+    await sendTemplatedEmail(
+      "auto_clock_out_notification",
+      vars,
+      {
+        subject: `Auto Clock-Out: ${employeeName} — ${vars.totalHours}`,
+        html: adminFallbackHtml,
+      },
+      "#f59e0b"
+    );
+
+    // ── Employee notification (direct → the employee) ──
+    const employeeHtml = wrapLayout(
+      `
+      <p style="margin: 0 0 16px 0; color: #111827; font-size: 15px;">Hi ${employeeName},</p>
+      <p style="margin: 0 0 16px 0; color: #374151; font-size: 14px; line-height: 1.6;">
+        You didn't clock out today, so the system automatically clocked you out at
+        <strong>${vars.clockOutTime}</strong> on ${vars.date}.
+      </p>
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px;">
+        <tr><td style="padding: 6px 0; color: #6b7280; font-size: 14px; width: 130px;">Clock In</td><td style="padding: 6px 0; color: #111827; font-size: 14px;">${vars.clockInTime}</td></tr>
+        <tr><td style="padding: 6px 0; color: #6b7280; font-size: 14px;">Auto Clock Out</td><td style="padding: 6px 0; color: #f59e0b; font-size: 15px; font-weight: 700;">${vars.clockOutTime}</td></tr>
+        <tr><td style="padding: 6px 0; color: #6b7280; font-size: 14px;">Total Hours</td><td style="padding: 6px 0; color: #4f46e5; font-size: 15px; font-weight: 700;">${vars.totalHours}</td></tr>
+      </table>
+      <p style="margin: 0; color: #6b7280; font-size: 13px; line-height: 1.6;">
+        Please remember to clock out at the end of your day. If this looks wrong, contact your administrator.
+      </p>
+      `,
+      "#f59e0b",
+      "Auto Clock-Out"
+    );
+
+    try {
+      await transporter.sendMail({
+        from: `"United Nexa Tech" <${process.env.SMTP_USER}>`,
+        to: employeeEmail,
+        subject: `You were auto clocked-out at ${vars.clockOutTime}`,
+        html: employeeHtml,
+      });
+      console.log(`[email] auto clock-out sent to ${employeeEmail}`);
+    } catch (error) {
+      console.error(`[email] auto clock-out (employee) failed:`, (error as Error).message);
+    }
+  }
+
   static async sendLateAlertNotification(
     employeeName: string,
     employeeEmail: string,

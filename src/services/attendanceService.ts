@@ -3,6 +3,7 @@ import User from "../models/User";
 import Holiday from "../models/Holiday";
 import Leave from "../models/Leave";
 import CompanySettings from "../models/CompanySettings";
+import { EmailService } from "./emailService";
 import { ApiError } from "../utils/ApiError";
 import { parsePagination } from "../utils/helpers";
 
@@ -366,6 +367,7 @@ export class AttendanceService {
     });
 
     let count = 0;
+    const closed: { userId: string; clockIn: Date; clockOut: Date; totalHours: number }[] = [];
     for (const record of openRecords) {
       record.clockOut = autoTime;
       record.totalHours = parseFloat(
@@ -378,11 +380,30 @@ export class AttendanceService {
       }
       record.notes = (record.notes ? record.notes + " | " : "") + `Auto clock-out at ${autoTimeLabel}`;
       await record.save();
+      closed.push({
+        userId: record.userId.toString(),
+        clockIn: record.clockIn!,
+        clockOut: record.clockOut!,
+        totalHours: record.totalHours!,
+      });
       count++;
     }
 
     if (count > 0) {
       console.log(`[auto-clockout] Clocked out ${count} employee(s) at ${autoTime.toISOString()}`);
+
+      // Notify each affected employee and the admin list. Fire-and-forget so a
+      // slow or failing mail server never blocks (or fails) the cron run.
+      const closedUsers = await User.find({ _id: { $in: closed.map((c) => c.userId) } })
+        .select("name email")
+        .lean();
+      const userMap = new Map(closedUsers.map((u) => [u._id.toString(), u]));
+      for (const c of closed) {
+        const u = userMap.get(c.userId);
+        if (!u?.email) continue;
+        EmailService.sendAutoClockOutNotification(u.name, u.email, c.clockIn, c.clockOut, c.totalHours)
+          .catch((err) => console.error("[auto-clockout] email failed:", (err as Error).message));
+      }
     }
     return count;
   }
