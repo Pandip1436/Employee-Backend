@@ -11,6 +11,20 @@ const transporter = nodemailer.createTransport({
   },
 });
 
+// Logo shown in every email header. Set EMAIL_LOGO_URL to a public https image,
+// or it falls back to <CLIENT_URL>/logo.png. Empty → header renders text-only.
+const LOGO_URL =
+  process.env.EMAIL_LOGO_URL ||
+  (process.env.CLIENT_URL ? `${process.env.CLIENT_URL.replace(/\/+$/, "")}/logo.png` : "");
+
+/** Branded header band: logo (if configured) + title. Inline styles for email-client support. */
+function emailHeader(title: string, bgColor: string): string {
+  const logo = LOGO_URL
+    ? `<img src="${LOGO_URL}" alt="" height="28" style="height:28px;width:auto;vertical-align:middle;margin-right:10px;border-radius:6px;background:rgba(255,255,255,0.18);padding:3px;" />`
+    : "";
+  return `<div style="background: ${bgColor}; padding: 16px 24px;">${logo}<h2 style="display:inline-block;vertical-align:middle;color:#fff;margin:0;font-size:18px;">${title}</h2></div>`;
+}
+
 async function getAdminEmails(): Promise<string[]> {
   // Prefer the editable list from Company Settings; fall back to env.
   try {
@@ -91,9 +105,7 @@ function wrapLayout(body: string, headerColor = "#4f46e5", title = "Notification
   }
   return `
     <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 520px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden;">
-      <div style="background: ${headerColor}; padding: 20px 24px;">
-        <h2 style="color: #fff; margin: 0; font-size: 18px;">${title}</h2>
-      </div>
+      ${emailHeader(title, headerColor)}
       <div style="padding: 24px; color: #111827; font-size: 14px; line-height: 1.6;">
         ${body}
       </div>
@@ -161,9 +173,7 @@ export class EmailService {
 
     const fallbackHtml = `
       <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 520px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden;">
-        <div style="background: #4f46e5; padding: 20px 24px;">
-          <h2 style="color: #fff; margin: 0; font-size: 18px;">Clock In Notification</h2>
-        </div>
+        ${emailHeader("Clock In Notification", "#4f46e5")}
         <div style="padding: 24px;">
           <div style="background: #f0fdf4; border-left: 4px solid #22c55e; padding: 12px 16px; border-radius: 0 8px 8px 0; margin-bottom: 20px;">
             <p style="margin: 0; color: #15803d; font-weight: 600;">Employee has clocked in</p>
@@ -210,9 +220,7 @@ export class EmailService {
 
     const fallbackHtml = `
       <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 520px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden;">
-        <div style="background: #4f46e5; padding: 20px 24px;">
-          <h2 style="color: #fff; margin: 0; font-size: 18px;">Clock Out Notification</h2>
-        </div>
+        ${emailHeader("Clock Out Notification", "#4f46e5")}
         <div style="padding: 24px;">
           <div style="background: #fef2f2; border-left: 4px solid #ef4444; padding: 12px 16px; border-radius: 0 8px 8px 0; margin-bottom: 20px;">
             <p style="margin: 0; color: #dc2626; font-weight: 600;">Employee has clocked out</p>
@@ -267,9 +275,7 @@ export class EmailService {
     // ── Admin notification (templated → admin list) ──
     const adminFallbackHtml = `
       <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 520px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden;">
-        <div style="background: #f59e0b; padding: 20px 24px;">
-          <h2 style="color: #fff; margin: 0; font-size: 18px;">Auto Clock-Out</h2>
-        </div>
+        ${emailHeader("Auto Clock-Out", "#f59e0b")}
         <div style="padding: 24px;">
           <div style="background: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px 16px; border-radius: 0 8px 8px 0; margin-bottom: 20px;">
             <p style="margin: 0; color: #b45309; font-weight: 600;">Employee was auto clocked-out (no manual clock-out)</p>
@@ -356,9 +362,7 @@ export class EmailService {
 
     const fallbackHtml = `
       <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 520px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden;">
-        <div style="background: #dc2626; padding: 20px 24px;">
-          <h2 style="color: #fff; margin: 0; font-size: 18px;">Late Login Alert</h2>
-        </div>
+        ${emailHeader("Late Login Alert", "#dc2626")}
         <div style="padding: 24px;">
           <div style="background: #fef2f2; border-left: 4px solid #dc2626; padding: 12px 16px; border-radius: 0 8px 8px 0; margin-bottom: 20px;">
             <p style="margin: 0; color: #dc2626; font-weight: 600;">Employee arrived late by ${lateDuration}</p>
