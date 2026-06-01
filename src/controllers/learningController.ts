@@ -5,6 +5,7 @@ import Training from "../models/Training";
 import User from "../models/User";
 import { AuthRequest } from "../types";
 import { NotificationService } from "../services/notificationService";
+import { attachProfilePhotoUrls } from "../services/userService";
 
 export class LearningController {
   // ── Courses ──
@@ -26,7 +27,40 @@ export class LearningController {
         .populate("enrolledUsers", "name email department")
         .populate("completedUsers", "name email department");
       if (!course) { res.status(404).json({ success: false, message: "Course not found" }); return; }
-      res.json({ success: true, data: course });
+
+      // Enrich enrolledUsers + completedUsers with signed profilePhotoUrl (deduped).
+      const usersMap = new Map<string, unknown>();
+      for (const key of ["enrolledUsers", "completedUsers"] as const) {
+        const arr = (course as unknown as Record<string, unknown>)[key];
+        if (Array.isArray(arr)) {
+          for (const u of arr) {
+            const id = (u as { _id?: unknown })?._id;
+            if (id) usersMap.set(String(id), u);
+          }
+        }
+      }
+      const enriched = await attachProfilePhotoUrls(
+        Array.from(usersMap.values()) as Array<{ _id: unknown; toJSON?: () => Record<string, unknown> }>,
+      );
+      const photoByUserId = new Map<string, string | undefined>();
+      for (const u of enriched) {
+        photoByUserId.set(String(u._id), u.profilePhotoUrl as string | undefined);
+      }
+
+      const obj = course.toJSON() as unknown as Record<string, unknown>;
+      for (const key of ["enrolledUsers", "completedUsers"] as const) {
+        const arr = obj[key];
+        if (Array.isArray(arr)) {
+          obj[key] = arr.map((x: unknown) => {
+            const u = x as { _id?: unknown } & Record<string, unknown>;
+            if (u && typeof u === "object" && u._id) {
+              return { ...u, profilePhotoUrl: photoByUserId.get(String(u._id)) };
+            }
+            return x;
+          });
+        }
+      }
+      res.json({ success: true, data: obj });
     } catch (e) { next(e); }
   }
   static async createCourse(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
@@ -162,6 +196,12 @@ export class LearningController {
         }
       }
 
+      // Enrich learners with signed profilePhotoUrl so the Learners tab can show
+      // real avatars (falls back to initials if no photo is set).
+      const enrichedUsers = await attachProfilePhotoUrls(users);
+      const photoByUserId = new Map<string, string | undefined>();
+      for (const u of enrichedUsers) photoByUserId.set(String(u._id), u.profilePhotoUrl as string | undefined);
+
       const learners = users.map((u) => {
         const data = userMap.get(u._id.toString()) || { enrolled: [], completed: [] };
         const inProgress = data.enrolled.filter(
@@ -173,6 +213,7 @@ export class LearningController {
           email: u.email,
           department: (u as any).department || "",
           userId: (u as any).userId || "",
+          profilePhotoUrl: photoByUserId.get(String(u._id)),
           enrolledCount: data.enrolled.length,
           completedCount: data.completed.length,
           inProgressCount: inProgress.length,

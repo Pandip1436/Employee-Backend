@@ -7,6 +7,43 @@ import ReviewCycle from "../models/ReviewCycle";
 import { AuthRequest } from "../types";
 import { parsePagination } from "../utils/helpers";
 import { NotificationService } from "../services/notificationService";
+import { attachProfilePhotoUrls } from "../services/userService";
+
+// Populated user reference fields across Feedback documents.
+const FEEDBACK_USER_FIELDS = ["fromUser"] as const;
+
+// Enrich an array of populated Mongoose docs with `profilePhotoUrl` on each
+// user sub-object, batching the photo lookup across all documents.
+async function enrichWithProfilePhotos<T>(data: T[], userFields: readonly string[]): Promise<Array<Record<string, unknown>>> {
+  const users = new Map<string, { _id: unknown }>();
+  for (const r of data) {
+    for (const key of userFields) {
+      const u = (r as unknown as Record<string, unknown>)[key];
+      if (Array.isArray(u)) {
+        u.forEach((x: any) => { if (x && typeof x === "object" && x._id) users.set(String(x._id), x); });
+      } else if (u && typeof u === "object" && (u as any)._id) {
+        users.set(String((u as any)._id), u as { _id: unknown });
+      }
+    }
+  }
+  const enriched = await attachProfilePhotoUrls(Array.from(users.values()));
+  const photoByUserId = new Map<string, string | undefined>();
+  for (const u of enriched) photoByUserId.set(String(u._id), u.profilePhotoUrl as string | undefined);
+  return data.map((r) => {
+    const obj = (typeof (r as any).toJSON === "function" ? (r as any).toJSON() : r) as unknown as Record<string, unknown>;
+    for (const key of userFields) {
+      const u = obj[key];
+      if (Array.isArray(u)) {
+        obj[key] = u.map((x: any) => x && typeof x === "object" && x._id
+          ? { ...x, profilePhotoUrl: photoByUserId.get(String(x._id)) }
+          : x);
+      } else if (u && typeof u === "object" && (u as any)._id) {
+        obj[key] = { ...(u as Record<string, unknown>), profilePhotoUrl: photoByUserId.get(String((u as any)._id)) };
+      }
+    }
+    return obj;
+  });
+}
 
 export class PerformanceController {
   // ── Goals ──
@@ -216,13 +253,15 @@ export class PerformanceController {
   static async getMyFeedback(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const feedback = await FeedbackModel.find({ toUser: req.user!._id }).populate("fromUser", "name").sort("-createdAt");
-      res.json({ success: true, data: feedback });
+      const enriched = await enrichWithProfilePhotos(feedback, FEEDBACK_USER_FIELDS);
+      res.json({ success: true, data: enriched });
     } catch (e) { next(e); }
   }
   static async getFeedbackFor(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const feedback = await FeedbackModel.find({ toUser: req.params.userId as string }).populate("fromUser", "name").sort("-createdAt");
-      res.json({ success: true, data: feedback });
+      const enriched = await enrichWithProfilePhotos(feedback, FEEDBACK_USER_FIELDS);
+      res.json({ success: true, data: enriched });
     } catch (e) { next(e); }
   }
 
