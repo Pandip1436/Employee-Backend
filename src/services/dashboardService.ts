@@ -5,6 +5,7 @@ import Holiday from "../models/Holiday";
 import WeeklyTimesheet from "../models/WeeklyTimesheet";
 import CompanySettings from "../models/CompanySettings";
 import { AttendanceService, isWorkingDow } from "./attendanceService";
+import { attachProfilePhotoUrls } from "./userService";
 
 /** Compute today's attendance buckets for the active non-admin workforce,
  *  overlaying approved leaves so employees on leave surface as on-leave even
@@ -135,11 +136,14 @@ export class DashboardService {
       computeTodayBuckets(today),
     ]);
 
+    // Enrich new-joiner list with signed photo URLs in one batch.
+    const newJoinersWithPhotos = await attachProfilePhotoUrls(newJoiners);
+
     return {
       totalEmployees,
       activeEmployees,
       inactiveEmployees: totalEmployees - activeEmployees,
-      newJoinersThisMonth: newJoiners,
+      newJoinersThisMonth: newJoinersWithPhotos,
       leaveStats,
       todayPresent: buckets.present,
       todayAbsent: buckets.absent,
@@ -158,12 +162,15 @@ export class DashboardService {
     const nextWeek = new Date(today);
     nextWeek.setDate(today.getDate() + 14);
 
-    const anniversaries = users.filter((u) => {
+    const baseList = users.filter((u) => {
       const joinDate = new Date(u.createdAt);
       const thisYearAnniv = new Date(now.getFullYear(), joinDate.getMonth(), joinDate.getDate());
       return thisYearAnniv >= today && thisYearAnniv <= nextWeek && joinDate.getFullYear() < now.getFullYear();
-    }).map((u) => {
-      const joinDate = new Date(u.createdAt);
+    });
+    // Attach signed photo URLs in a single batch before composing the response.
+    const withPhotos = await attachProfilePhotoUrls(baseList);
+    const anniversaries = withPhotos.map((u) => {
+      const joinDate = new Date((u as { createdAt: string | Date }).createdAt);
       return { ...u, years: now.getFullYear() - joinDate.getFullYear(), eventDate: new Date(now.getFullYear(), joinDate.getMonth(), joinDate.getDate()) };
     });
 
@@ -176,9 +183,31 @@ export class DashboardService {
       Leave.find({ status: "pending" }).populate("userId", "name email").sort("-createdAt").limit(5).lean(),
       WeeklyTimesheet.find({ status: "submitted" }).populate("userId", "name email").sort("-submittedAt").limit(5).lean(),
     ]);
+
+    // Collect unique users across both lists and enrich with signed photo URLs in one batch.
+    const usersMap = new Map<string, unknown>();
+    for (const r of [...leaves, ...timesheets]) {
+      const u = r.userId as { _id?: unknown } | null | undefined;
+      const id = u?._id;
+      if (u && id) usersMap.set(String(id), u);
+    }
+    const enriched = await attachProfilePhotoUrls(
+      Array.from(usersMap.values()) as Array<{ _id: unknown; toJSON?: () => Record<string, unknown> }>,
+    );
+    const photoByUserId = new Map<string, string | undefined>();
+    for (const u of enriched) photoByUserId.set(String(u._id), u.profilePhotoUrl as string | undefined);
+
+    const withPhoto = (u: unknown) => {
+      const o = u as { _id?: unknown } & Record<string, unknown>;
+      if (o && typeof o === "object" && o._id) {
+        return { ...o, profilePhotoUrl: photoByUserId.get(String(o._id)) };
+      }
+      return u;
+    };
+
     return {
-      leaves: leaves.map((l) => ({ _id: l._id, type: "leave", employee: l.userId, leaveType: l.type, days: l.days, startDate: l.startDate, createdAt: l.createdAt })),
-      timesheets: timesheets.map((t) => ({ _id: t._id, type: "timesheet", employee: t.userId, weekStart: t.weekStart, totalHours: t.totalHours, submittedAt: t.submittedAt })),
+      leaves: leaves.map((l) => ({ _id: l._id, type: "leave", employee: withPhoto(l.userId), leaveType: l.type, days: l.days, startDate: l.startDate, createdAt: l.createdAt })),
+      timesheets: timesheets.map((t) => ({ _id: t._id, type: "timesheet", employee: withPhoto(t.userId), weekStart: t.weekStart, totalHours: t.totalHours, submittedAt: t.submittedAt })),
     };
   }
 
