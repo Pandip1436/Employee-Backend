@@ -4,6 +4,7 @@ import Holiday from "../models/Holiday";
 import Leave from "../models/Leave";
 import CompanySettings from "../models/CompanySettings";
 import { EmailService } from "./emailService";
+import { attachProfilePhotoUrls } from "./userService";
 import { ApiError } from "../utils/ApiError";
 import { parsePagination } from "../utils/helpers";
 
@@ -208,7 +209,8 @@ export class AttendanceService {
 
     // All active users excluding admins (admins are not required to mark attendance)
     const User = (await import("../models/User")).default;
-    const allUsers = await User.find({ isActive: true, role: { $ne: "admin" } }).select("name email department role userStatus userId").lean();
+    const rawUsers = await User.find({ isActive: true, role: { $ne: "admin" } }).select("name email department role userStatus userId").lean();
+    const allUsers = (await attachProfilePhotoUrls(rawUsers)) as any[];
 
     // Approved leaves that cover the target date — used to surface on-leave
     // employees even when the auto-mark cron hasn't created an attendance row yet
@@ -281,6 +283,7 @@ export class AttendanceService {
         clockOut: record?.clockOut || null,
         totalHours: record?.totalHours || null,
         status: record?.status || null,
+        profilePhotoUrl: u.profilePhotoUrl ?? null,
       };
     });
 
@@ -560,6 +563,7 @@ export class AttendanceService {
     const grouped: Record<
       string,
       {
+        _id: unknown;
         name: string;
         email: string;
         department: string;
@@ -586,6 +590,7 @@ export class AttendanceService {
       if (!uid) continue;
       if (!grouped[uid]) {
         grouped[uid] = {
+          _id: user._id,
           name: user.name || "Unknown",
           email: user.email || "",
           department: user.department || "",
@@ -649,10 +654,16 @@ export class AttendanceService {
     // Strip the internal Set before returning — it's not serialisable.
     const employees = Object.values(grouped).map(({ leaveDateKeys: _drop, ...rest }) => rest);
 
+    // Attach signed profile photo URLs in a single batched lookup so the UI can
+    // render real avatars instead of initials fallbacks.
+    const withPhotos = (await attachProfilePhotoUrls(employees)) as Array<
+      (typeof employees)[number] & { profilePhotoUrl?: string }
+    >;
+
     return {
       startDate,
       endDate,
-      employees,
+      employees: withPhotos,
       allRecords: records,
     };
   }

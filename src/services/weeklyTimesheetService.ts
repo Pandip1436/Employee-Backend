@@ -2,6 +2,7 @@ import WeeklyTimesheet from "../models/WeeklyTimesheet";
 import User from "../models/User";
 import { ApiError } from "../utils/ApiError";
 import { parsePagination } from "../utils/helpers";
+import { attachProfilePhotoUrls } from "./userService";
 
 export class WeeklyTimesheetService {
   static getWeekRange(date?: string) {
@@ -116,7 +117,26 @@ export class WeeklyTimesheetService {
       WeeklyTimesheet.find(filter).populate("userId", "name email department").populate("entries.projectId", "name client").populate("approvedBy", "name email").sort(sortField).skip(skip).limit(limit),
       WeeklyTimesheet.countDocuments(filter),
     ]);
-    return { data, pagination: { total, page, limit, pages: Math.ceil(total / limit) } };
+
+    // Enrich populated userId with profilePhotoUrl
+    const populatedUsers = data
+      .map((s) => s.userId as unknown as { _id: unknown } | null)
+      .filter((u): u is { _id: unknown } => !!u && typeof u === "object" && "_id" in u);
+    const enrichedUsers = await attachProfilePhotoUrls(populatedUsers);
+    const photoByUserId = new Map<string, string | undefined>();
+    for (const u of enrichedUsers) {
+      photoByUserId.set(String(u._id), u.profilePhotoUrl as string | undefined);
+    }
+    const enrichedData = data.map((s) => {
+      const obj = s.toJSON() as unknown as Record<string, unknown>;
+      const u = obj.userId as { _id?: unknown } | null | undefined;
+      if (u && typeof u === "object" && "_id" in u) {
+        obj.userId = { ...(u as Record<string, unknown>), profilePhotoUrl: photoByUserId.get(String(u._id)) };
+      }
+      return obj;
+    });
+
+    return { data: enrichedData, pagination: { total, page, limit, pages: Math.ceil(total / limit) } };
   }
 
   static async getAllSheets(query: { page?: number; limit?: number; status?: string; userId?: string; department?: string; startDate?: string; endDate?: string }) {
@@ -149,7 +169,26 @@ export class WeeklyTimesheetService {
       WeeklyTimesheet.find(filter).populate("userId", "name email department").populate("entries.projectId", "name client").populate("approvedBy", "name").sort("-weekStart").skip(skip).limit(limit),
       WeeklyTimesheet.countDocuments(filter),
     ]);
-    return { data, pagination: { total, page, limit, pages: Math.ceil(total / limit) } };
+
+    // Enrich populated userId with profilePhotoUrl
+    const populatedUsers = data
+      .map((s) => s.userId as unknown as { _id: unknown } | null)
+      .filter((u): u is { _id: unknown } => !!u && typeof u === "object" && "_id" in u);
+    const enrichedUsers = await attachProfilePhotoUrls(populatedUsers);
+    const photoByUserId = new Map<string, string | undefined>();
+    for (const u of enrichedUsers) {
+      photoByUserId.set(String(u._id), u.profilePhotoUrl as string | undefined);
+    }
+    const enrichedData = data.map((s) => {
+      const obj = s.toJSON() as unknown as Record<string, unknown>;
+      const u = obj.userId as { _id?: unknown } | null | undefined;
+      if (u && typeof u === "object" && "_id" in u) {
+        obj.userId = { ...(u as Record<string, unknown>), profilePhotoUrl: photoByUserId.get(String(u._id)) };
+      }
+      return obj;
+    });
+
+    return { data: enrichedData, pagination: { total, page, limit, pages: Math.ceil(total / limit) } };
   }
 
   /** Fetch all non-draft sheets matching the filters, sorted by weekStart desc.
@@ -203,7 +242,8 @@ export class WeeklyTimesheetService {
     const allUsers = await User.find({ isActive: true, role: { $ne: "admin" } }).select("name email department").lean();
     const submitted = await WeeklyTimesheet.find({ weekStart: { $gte: ws, $lte: we }, status: { $ne: "draft" } }).select("userId").lean();
     const submittedIds = new Set(submitted.map((s) => s.userId.toString()));
-    return allUsers.filter((u) => !submittedIds.has(u._id.toString()));
+    const missing = allUsers.filter((u) => !submittedIds.has(u._id.toString()));
+    return attachProfilePhotoUrls(missing);
   }
 
   static async getOvertimeReport(startDate: string, endDate: string, maxHoursPerWeek = 40) {
@@ -212,12 +252,29 @@ export class WeeklyTimesheetService {
       weekStart: { $gte: new Date(startDate), $lte: new Date(endDate) },
       totalHours: { $gt: maxHoursPerWeek },
     }).populate("userId", "name email department").sort("-totalHours").lean();
-    return sheets.map((s) => ({
-      employee: s.userId,
-      weekStart: s.weekStart,
-      totalHours: s.totalHours,
-      overtime: parseFloat((s.totalHours - maxHoursPerWeek).toFixed(2)),
-    }));
+
+    // Enrich populated employees with profilePhotoUrl
+    const populatedUsers = sheets
+      .map((s) => s.userId as unknown as { _id: unknown } | null)
+      .filter((u): u is { _id: unknown } => !!u && typeof u === "object" && "_id" in u);
+    const enrichedUsers = await attachProfilePhotoUrls(populatedUsers);
+    const photoByUserId = new Map<string, string | undefined>();
+    for (const u of enrichedUsers) {
+      photoByUserId.set(String(u._id), u.profilePhotoUrl as string | undefined);
+    }
+
+    return sheets.map((s) => {
+      const emp = s.userId as unknown as Record<string, unknown> | null;
+      const empWithPhoto = emp && typeof emp === "object" && "_id" in emp
+        ? { ...emp, profilePhotoUrl: photoByUserId.get(String((emp as { _id: unknown })._id)) }
+        : emp;
+      return {
+        employee: empWithPhoto,
+        weekStart: s.weekStart,
+        totalHours: s.totalHours,
+        overtime: parseFloat((s.totalHours - maxHoursPerWeek).toFixed(2)),
+      };
+    });
   }
 
   /**
@@ -335,6 +392,17 @@ export class WeeklyTimesheetService {
       .populate("entries.projectId", "name client")
       .lean();
 
+    // Pre-fetch profile photos for all non-admin populated users in one batch
+    const populatedUsers = sheets
+      .map((s) => s.userId as unknown as { _id: unknown; role?: string } | null)
+      .filter((u): u is { _id: unknown; role?: string } =>
+        !!u && typeof u === "object" && "_id" in u && u.role !== "admin");
+    const enrichedUsers = await attachProfilePhotoUrls(populatedUsers);
+    const photoByUserId = new Map<string, string | undefined>();
+    for (const u of enrichedUsers) {
+      photoByUserId.set(String(u._id), u.profilePhotoUrl as string | undefined);
+    }
+
     const rows = [];
     for (const s of sheets) {
       const user = s.userId as unknown as { _id: unknown; name: string; email: string; department?: string; role?: string };
@@ -355,7 +423,13 @@ export class WeeklyTimesheetService {
         });
       if (dayEntries.length === 0) continue;
       rows.push({
-        user: { _id: user._id, name: user.name, email: user.email, department: user.department ?? null },
+        user: {
+          _id: user._id,
+          name: user.name,
+          email: user.email,
+          department: user.department ?? null,
+          profilePhotoUrl: photoByUserId.get(String(user._id)),
+        },
         status: s.status,
         totalHours: dayEntries.reduce((sum, e) => sum + e.hours, 0),
         entries: dayEntries,

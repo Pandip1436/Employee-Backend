@@ -3,6 +3,7 @@ import Holiday from "../models/Holiday";
 import { ApiError } from "../utils/ApiError";
 import { parsePagination } from "../utils/helpers";
 import { AuditService } from "./auditService";
+import { attachProfilePhotoUrls } from "./userService";
 
 // Comp-off expires 60 days after manager approval
 const EXPIRY_DAYS = 60;
@@ -199,7 +200,26 @@ export class CompOffService {
       CompOff.find(filter).populate("userId", "name email department").sort("-createdAt").skip(skip).limit(limit),
       CompOff.countDocuments(filter),
     ]);
-    return { data, pagination: { total, page, limit, pages: Math.ceil(total / limit) } };
+
+    // Enrich populated userId with profilePhotoUrl
+    const populatedUsers = data
+      .map((r) => r.userId as unknown as { _id: unknown } | null)
+      .filter((u): u is { _id: unknown } => !!u && typeof u === "object" && "_id" in u);
+    const enrichedUsers = await attachProfilePhotoUrls(populatedUsers);
+    const photoByUserId = new Map<string, string | undefined>();
+    for (const u of enrichedUsers) {
+      photoByUserId.set(String(u._id), u.profilePhotoUrl as string | undefined);
+    }
+    const enrichedData = data.map((r) => {
+      const obj = (typeof (r as any).toJSON === "function" ? (r as any).toJSON() : r) as unknown as Record<string, unknown>;
+      const u = obj.userId as { _id?: unknown } | null | undefined;
+      if (u && typeof u === "object" && "_id" in u) {
+        obj.userId = { ...(u as Record<string, unknown>), profilePhotoUrl: photoByUserId.get(String(u._id)) };
+      }
+      return obj;
+    });
+
+    return { data: enrichedData, pagination: { total, page, limit, pages: Math.ceil(total / limit) } };
   }
 
   static async approve(id: string, managerId: string, status: "approved" | "rejected", rejectionComment?: string) {

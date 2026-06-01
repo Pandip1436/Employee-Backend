@@ -8,7 +8,7 @@ import { StorageService } from "./storageService";
 // Attach a signed profilePhotoUrl to each user by looking up their
 // EmployeeProfile.profilePhoto R2 key in a single batched query. Users without
 // a profile photo just get `profilePhotoUrl: undefined`.
-async function attachProfilePhotoUrls<T extends { _id: unknown; toJSON?: () => Record<string, unknown> }>(
+export async function attachProfilePhotoUrls<T extends { _id: unknown; toJSON?: () => Record<string, unknown> }>(
   users: T[]
 ): Promise<Array<Record<string, unknown>>> {
   if (!users.length) return [];

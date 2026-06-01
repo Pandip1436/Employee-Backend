@@ -4,6 +4,7 @@ import { CompOffService } from "./compOffService";
 import CompanySettings from "../models/CompanySettings";
 import { ApiError } from "../utils/ApiError";
 import { parsePagination } from "../utils/helpers";
+import { attachProfilePhotoUrls } from "./userService";
 
 // Pick the oldest non-expired approved comp-offs to consume `count` days
 async function pickAvailableCompOffs(userId: string, count: number) {
@@ -90,8 +91,26 @@ export class LeaveService {
       Leave.countDocuments(filter),
     ]);
 
+    // Enrich populated userId with profilePhotoUrl
+    const populatedUsers = data
+      .map((l) => l.userId as unknown as { _id: unknown } | null)
+      .filter((u): u is { _id: unknown } => !!u && typeof u === "object" && "_id" in u);
+    const enrichedUsers = await attachProfilePhotoUrls(populatedUsers);
+    const photoByUserId = new Map<string, string | undefined>();
+    for (const u of enrichedUsers) {
+      photoByUserId.set(String(u._id), u.profilePhotoUrl as string | undefined);
+    }
+    const enrichedData = data.map((l) => {
+      const obj = (typeof (l as any).toJSON === "function" ? (l as any).toJSON() : l) as unknown as Record<string, unknown>;
+      const u = obj.userId as { _id?: unknown } | null | undefined;
+      if (u && typeof u === "object" && "_id" in u) {
+        obj.userId = { ...(u as Record<string, unknown>), profilePhotoUrl: photoByUserId.get(String(u._id)) };
+      }
+      return obj;
+    });
+
     return {
-      data,
+      data: enrichedData,
       pagination: { total, page, limit, pages: Math.ceil(total / limit) },
     };
   }

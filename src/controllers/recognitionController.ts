@@ -3,6 +3,7 @@ import Recognition from "../models/Recognition";
 import { AuthRequest } from "../types";
 import { parsePagination } from "../utils/helpers";
 import { NotificationService } from "../services/notificationService";
+import { attachProfilePhotoUrls } from "../services/userService";
 
 export class RecognitionController {
   static async getAll(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
@@ -12,7 +13,34 @@ export class RecognitionController {
         Recognition.find().populate("fromUser", "name email department").populate("toUser", "name email department").populate("comments.userId", "name").sort("-createdAt").skip(skip).limit(limit),
         Recognition.countDocuments(),
       ]);
-      res.json({ success: true, data, pagination: { total, page, limit, pages: Math.ceil(total / limit) } });
+
+      // Enrich populated user refs (fromUser, toUser) with a signed profilePhotoUrl
+      // so the Recognition Wall can render real avatars.
+      const usersMap = new Map<string, { _id: unknown }>();
+      for (const r of data) {
+        for (const key of ["fromUser", "toUser"] as const) {
+          const u = (r as unknown as Record<string, unknown>)[key] as { _id?: unknown } | null | undefined;
+          if (u && typeof u === "object" && u._id) usersMap.set(String(u._id), u as { _id: unknown });
+        }
+      }
+      const enrichedUsers = await attachProfilePhotoUrls(Array.from(usersMap.values()));
+      const photoByUserId = new Map<string, string | undefined>();
+      for (const u of enrichedUsers) photoByUserId.set(String(u._id), u.profilePhotoUrl as string | undefined);
+
+      const enrichedData = data.map((r) => {
+        const obj = (typeof (r as unknown as { toJSON?: () => unknown }).toJSON === "function"
+          ? (r as unknown as { toJSON: () => unknown }).toJSON()
+          : r) as unknown as Record<string, unknown>;
+        for (const key of ["fromUser", "toUser"]) {
+          const u = obj[key] as { _id?: unknown } | null | undefined;
+          if (u && typeof u === "object" && "_id" in u) {
+            obj[key] = { ...(u as Record<string, unknown>), profilePhotoUrl: photoByUserId.get(String(u._id)) };
+          }
+        }
+        return obj;
+      });
+
+      res.json({ success: true, data: enrichedData, pagination: { total, page, limit, pages: Math.ceil(total / limit) } });
     } catch (e) { next(e); }
   }
 

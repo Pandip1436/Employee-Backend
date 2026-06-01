@@ -1,6 +1,7 @@
 import DailyUpdate from "../models/DailyUpdate";
 import { ApiError } from "../utils/ApiError";
 import { parsePagination } from "../utils/helpers";
+import { attachProfilePhotoUrls } from "./userService";
 
 export class DailyUpdateService {
   static async create(userId: string, data: {
@@ -84,7 +85,26 @@ export class DailyUpdateService {
       DailyUpdate.find(filter).populate("userId", "name email department").populate("reviewedBy", "name email").sort("-date").skip(skip).limit(limit),
       DailyUpdate.countDocuments(filter),
     ]);
-    return { data, pagination: { total, page, limit, pages: Math.ceil(total / limit) } };
+
+    // Enrich populated userId with signed profilePhotoUrl
+    const populatedUsers = data
+      .map((d) => d.userId as unknown as { _id: unknown } | null)
+      .filter((u): u is { _id: unknown } => !!u && typeof u === "object" && "_id" in u);
+    const enrichedUsers = await attachProfilePhotoUrls(populatedUsers);
+    const photoByUserId = new Map<string, string | undefined>();
+    for (const u of enrichedUsers) {
+      photoByUserId.set(String(u._id), u.profilePhotoUrl as string | undefined);
+    }
+    const enrichedData = data.map((d) => {
+      const obj = d.toJSON() as unknown as Record<string, unknown>;
+      const u = obj.userId as { _id?: unknown } | null | undefined;
+      if (u && typeof u === "object" && "_id" in u) {
+        obj.userId = { ...(u as Record<string, unknown>), profilePhotoUrl: photoByUserId.get(String(u._id)) };
+      }
+      return obj;
+    });
+
+    return { data: enrichedData, pagination: { total, page, limit, pages: Math.ceil(total / limit) } };
   }
 
   static async getById(id: string) {
