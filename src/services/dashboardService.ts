@@ -88,7 +88,10 @@ export class DashboardService {
     return {
       attendanceDays: attendance,
       attendancePercent: Math.round((attendance / workingDays) * 100),
-      totalHoursThisMonth: parseFloat(totalHours.toFixed(1)),
+      // Round to the nearest minute so the frontend's hour/minute formatter
+      // reflects the true total. `.toFixed(1)` here rounded to the nearest 6
+      // minutes — e.g. 7h 46m (7.7667h) showed as 7h 48m (7.8h).
+      totalHoursThisMonth: Math.round(totalHours * 60) / 60,
       leaveDaysTaken: totalLeaveDays,
       todayStatus: todayRecord ? { clockIn: todayRecord.clockIn, clockOut: todayRecord.clockOut, status: todayRecord.status, totalHours: todayRecord.totalHours } : null,
       pendingTimesheets: await WeeklyTimesheet.countDocuments({ userId, status: "draft" }),
