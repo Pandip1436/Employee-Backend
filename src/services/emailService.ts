@@ -63,6 +63,14 @@ function formatDate(date: Date): string {
   });
 }
 
+/** Format a fractional-hours value as "7h 28m" (rounded to the nearest minute). */
+function formatHours(hours: number): string {
+  const totalMinutes = Math.max(0, Math.round(hours * 60));
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  return `${h}h ${m}m`;
+}
+
 /* ─── Template Engine ─── */
 
 /**
@@ -215,7 +223,7 @@ export class EmailService {
       date: formatDate(clockOutTime),
       clockInTime: formatTime(clockInTime),
       clockOutTime: formatTime(clockOutTime),
-      totalHours: `${totalHours}h`,
+      totalHours: formatHours(totalHours),
     };
 
     const fallbackHtml = `
@@ -244,7 +252,7 @@ export class EmailService {
       "clock_out_notification",
       vars,
       {
-        subject: `Clock Out: ${employeeName} — ${totalHours}h worked`,
+        subject: `Clock Out: ${employeeName} — ${formatHours(totalHours)} worked`,
         html: fallbackHtml,
       },
       "#4f46e5"
@@ -269,7 +277,7 @@ export class EmailService {
       date: formatDate(clockOutTime),
       clockInTime: formatTime(clockInTime),
       clockOutTime: formatTime(clockOutTime),
-      totalHours: `${totalHours}h`,
+      totalHours: formatHours(totalHours),
     };
 
     // ── Admin notification (templated → admin list) ──

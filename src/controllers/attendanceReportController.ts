@@ -15,6 +15,15 @@ function formatDate(date: Date | string): string {
   return new Date(date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 }
 
+/** Format a fractional-hours value as "7h 28m" (rounded to the nearest minute). */
+function formatHours(hours: number | null | undefined): string {
+  const h0 = Number(hours) || 0;
+  const totalMinutes = Math.max(0, Math.round(h0 * 60));
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  return `${h}h ${m}m`;
+}
+
 type Period = "daily" | "weekly" | "monthly";
 
 // Resolve the (startDate, endDate, label, filenameSuffix) for the requested period.
@@ -124,7 +133,7 @@ export class AttendanceReportController {
           halfDay: emp.halfDays,
           absent: emp.absentDays,
           onLeave: emp.onLeaveDays || 0,
-          totalHours: parseFloat(emp.totalHours.toFixed(2)),
+          totalHours: formatHours(emp.totalHours),
         });
       }
 
@@ -154,7 +163,7 @@ export class AttendanceReportController {
           department: user.department || "",
           clockIn: formatTime(r.clockIn),
           clockOut: formatTime(r.clockOut),
-          totalHours: r.totalHours ? parseFloat(r.totalHours.toFixed(2)) : 0,
+          totalHours: r.totalHours ? formatHours(r.totalHours) : "—",
           status: r.status,
         });
       }
@@ -390,7 +399,7 @@ export class AttendanceReportController {
           String(emp.halfDays),
           String(emp.absentDays),
           String(emp.onLeaveDays || 0),
-          `${emp.totalHours.toFixed(1)}h`,
+          formatHours(emp.totalHours),
         ];
         drawRow(summaryCols, values, y, rowIdx);
         y += ROW_HEIGHT;
@@ -418,7 +427,7 @@ export class AttendanceReportController {
           user?.name || "Unknown",
           formatTime(r.clockIn),
           formatTime(r.clockOut),
-          r.totalHours ? `${r.totalHours.toFixed(1)}h` : "—",
+          r.totalHours ? formatHours(r.totalHours) : "—",
           r.status || "—",
         ];
         drawRow(dailyCols, values, y, rowIdx, r.status || undefined);
