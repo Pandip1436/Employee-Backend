@@ -26,13 +26,13 @@ export class WeeklyTimesheetService {
     const { weekStart, weekEnd } = this.getWeekRange(date);
     let sheet = await WeeklyTimesheet.findOne({ userId, weekStart })
       .populate("entries.projectId", "name client")
-      .populate("userId", "name email")
+      .populate("userId", "name email role")
       .populate("approvedBy", "name email");
     if (!sheet) {
       sheet = await WeeklyTimesheet.create({ userId, weekStart, weekEnd, entries: [], totalHours: 0 });
       sheet = await WeeklyTimesheet.findById(sheet._id)
         .populate("entries.projectId", "name client")
-        .populate("userId", "name email");
+        .populate("userId", "name email role");
     }
     return sheet!;
   }
@@ -90,7 +90,7 @@ export class WeeklyTimesheetService {
   static async getById(weekId: string) {
     const sheet = await WeeklyTimesheet.findById(weekId)
       .populate("entries.projectId", "name client")
-      .populate("userId", "name email department")
+      .populate("userId", "name email department role")
       .populate("approvedBy", "name email");
     if (!sheet) throw new ApiError(404, "Timesheet not found.");
     return sheet;
@@ -114,7 +114,7 @@ export class WeeklyTimesheetService {
     const filter = { status };
     const sortField = status === "submitted" ? "-submittedAt" : "-approvedAt";
     const [data, total] = await Promise.all([
-      WeeklyTimesheet.find(filter).populate("userId", "name email department").populate("entries.projectId", "name client").populate("approvedBy", "name email").sort(sortField).skip(skip).limit(limit),
+      WeeklyTimesheet.find(filter).populate("userId", "name email department role").populate("entries.projectId", "name client").populate("approvedBy", "name email").sort(sortField).skip(skip).limit(limit),
       WeeklyTimesheet.countDocuments(filter),
     ]);
 
@@ -166,7 +166,7 @@ export class WeeklyTimesheetService {
     }
 
     const [data, total] = await Promise.all([
-      WeeklyTimesheet.find(filter).populate("userId", "name email department").populate("entries.projectId", "name client").populate("approvedBy", "name").sort("-weekStart").skip(skip).limit(limit),
+      WeeklyTimesheet.find(filter).populate("userId", "name email department role").populate("entries.projectId", "name client").populate("approvedBy", "name").sort("-weekStart").skip(skip).limit(limit),
       WeeklyTimesheet.countDocuments(filter),
     ]);
 
@@ -219,7 +219,7 @@ export class WeeklyTimesheetService {
       filter.weekStart = range;
     }
     return WeeklyTimesheet.find(filter)
-      .populate("userId", "name email department")
+      .populate("userId", "name email department role")
       .sort("-weekStart")
       .lean();
   }
@@ -239,7 +239,7 @@ export class WeeklyTimesheetService {
   static async getMissingSubmissions(weekStart: string) {
     const { weekStart: ws, weekEnd: we } = this.getWeekRange(weekStart);
     const User = (await import("../models/User")).default;
-    const allUsers = await User.find({ isActive: true, role: { $ne: "admin" } }).select("name email department").lean();
+    const allUsers = await User.find({ isActive: true, role: { $ne: "admin" } }).select("name email department role").lean();
     const submitted = await WeeklyTimesheet.find({ weekStart: { $gte: ws, $lte: we }, status: { $ne: "draft" } }).select("userId").lean();
     const submittedIds = new Set(submitted.map((s) => s.userId.toString()));
     const missing = allUsers.filter((u) => !submittedIds.has(u._id.toString()));
@@ -251,7 +251,7 @@ export class WeeklyTimesheetService {
       status: { $in: ["submitted", "approved"] },
       weekStart: { $gte: new Date(startDate), $lte: new Date(endDate) },
       totalHours: { $gt: maxHoursPerWeek },
-    }).populate("userId", "name email department").sort("-totalHours").lean();
+    }).populate("userId", "name email department role").sort("-totalHours").lean();
 
     // Enrich populated employees with profilePhotoUrl
     const populatedUsers = sheets
@@ -348,7 +348,7 @@ export class WeeklyTimesheetService {
     if (department) userFilter.department = department;
 
     const [allUsers, sheets] = await Promise.all([
-      User.find(userFilter).select("name email department").lean(),
+      User.find(userFilter).select("name email department role").lean(),
       WeeklyTimesheet.find({ weekStart: { $gte: ws, $lte: we } })
         .select("userId status totalHours submittedAt approvedAt managerComment")
         .populate("approvedBy", "name")

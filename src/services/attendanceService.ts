@@ -551,7 +551,7 @@ export class AttendanceService {
     }
 
     const rawRecords = await Attendance.find(filter)
-      .populate("userId", "name email department userId")
+      .populate("userId", "name email department userId role")
       .sort("date")
       .lean();
 
@@ -568,6 +568,7 @@ export class AttendanceService {
         email: string;
         department: string;
         userId: string | null;
+        role: string;
         records: typeof records;
         totalHours: number;
         presentDays: number;
@@ -595,6 +596,7 @@ export class AttendanceService {
           email: user.email || "",
           department: user.department || "",
           userId: user.userId || null,
+          role: user.role || "",
           records: [],
           totalHours: 0,
           presentDays: 0,

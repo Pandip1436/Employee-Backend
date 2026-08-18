@@ -79,7 +79,8 @@ export class AttendanceReportController {
   static async getMonthlyReport(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const { startDate, endDate, period, label } = resolveRange(req.query);
-      const userId = req.user!.role === "employee" ? req.user!._id.toString() : (req.query.userId as string);
+      const isPrivileged = ["admin", "manager"].includes(req.user!.role);
+      const userId = isPrivileged ? (req.query.userId as string) : req.user!._id.toString();
       const base = await AttendanceService.getReportForRange(startDate, endDate, userId);
 
       res.status(200).json({
@@ -94,7 +95,8 @@ export class AttendanceReportController {
   static async exportExcel(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const { startDate, endDate, period, label, fileTag } = resolveRange(req.query);
-      const userId = req.user!.role === "employee" ? req.user!._id.toString() : (req.query.userId as string);
+      const isPrivileged = ["admin", "manager"].includes(req.user!.role);
+      const userId = isPrivileged ? (req.query.userId as string) : req.user!._id.toString();
       const report = await AttendanceService.getReportForRange(startDate, endDate, userId);
 
       const workbook = new ExcelJS.Workbook();
@@ -195,7 +197,8 @@ export class AttendanceReportController {
   static async exportPdf(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const { startDate, endDate, period, label, fileTag } = resolveRange(req.query);
-      const userId = req.user!.role === "employee" ? req.user!._id.toString() : (req.query.userId as string);
+      const isPrivileged = ["admin", "manager"].includes(req.user!.role);
+      const userId = isPrivileged ? (req.query.userId as string) : req.user!._id.toString();
       const report = await AttendanceService.getReportForRange(startDate, endDate, userId);
 
       // ── Page geometry ──

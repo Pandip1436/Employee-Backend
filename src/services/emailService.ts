@@ -1,5 +1,15 @@
 import nodemailer from "nodemailer";
 import CompanySettings from "../models/CompanySettings";
+import { ApiError } from "../utils/ApiError";
+
+/** Admin-supplied text (certificate notes, names) is interpolated into HTML mails. */
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
 
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST || "smtp.gmail.com",
@@ -432,6 +442,68 @@ export class EmailService {
       console.log(`[email] timesheet reminder sent to ${employeeEmail}`);
     } catch (error) {
       console.error(`[email] timesheet reminder failed:`, (error as Error).message);
+    }
+  }
+
+  /**
+   * Delivers an internship completion certificate to the intern, PDF attached.
+   * Unlike the notification mails above this one is triggered by an admin action,
+   * so a delivery failure is thrown rather than swallowed — the admin needs to
+   * know the certificate never left the building.
+   */
+  static async sendInternCertificate(opts: {
+    to: string;
+    internName: string;
+    companyName: string;
+    certificateNo: string;
+    startDate: string;
+    endDate: string;
+    message?: string;
+    attachment: { filename: string; content: Buffer };
+  }): Promise<void> {
+    const note = opts.message?.trim()
+      ? `<div style="margin: 0 0 16px 0; border-left: 3px solid #14b8a6; background: #f0fdfa; padding: 12px 16px; border-radius: 0 8px 8px 0; color: #115e59; font-size: 14px; line-height: 1.6; white-space: pre-wrap;">${escapeHtml(opts.message.trim())}</div>`
+      : "";
+
+    const html = wrapLayout(
+      `
+      <p style="margin: 0 0 16px 0; color: #111827; font-size: 15px;">Dear ${escapeHtml(opts.internName)},</p>
+      <p style="margin: 0 0 16px 0; color: #374151; font-size: 14px; line-height: 1.6;">
+        Congratulations on completing your internship with <strong>${escapeHtml(opts.companyName)}</strong>.
+        Your certificate of completion is attached to this email as a PDF.
+      </p>
+      ${note}
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px;">
+        <tr><td style="padding: 8px 0; color: #6b7280; font-size: 14px; width: 140px;">Certificate No.</td><td style="padding: 8px 0; color: #111827; font-size: 14px; font-weight: 600;">${escapeHtml(opts.certificateNo)}</td></tr>
+        <tr><td style="padding: 8px 0; color: #6b7280; font-size: 14px;">Internship Term</td><td style="padding: 8px 0; color: #111827; font-size: 14px;">${escapeHtml(opts.startDate)} → ${escapeHtml(opts.endDate)}</td></tr>
+      </table>
+      <p style="margin: 0; color: #6b7280; font-size: 13px; line-height: 1.6;">
+        We wish you the very best for everything ahead.
+      </p>
+      `,
+      "#0f766e",
+      "Internship Certificate"
+    );
+
+    try {
+      await transporter.sendMail({
+        from: `"${opts.companyName}" <${process.env.SMTP_USER}>`,
+        to: opts.to,
+        subject: `Your Internship Certificate — ${opts.companyName}`,
+        html,
+        attachments: [
+          {
+            filename: opts.attachment.filename,
+            content: opts.attachment.content,
+            contentType: "application/pdf",
+          },
+        ],
+      });
+      console.log(`[email] intern certificate sent to ${opts.to}`);
+    } catch (error) {
+      const reason = (error as Error).message;
+      console.error(`[email] intern certificate failed:`, reason);
+      throw new ApiError(502, `Could not email the certificate: ${reason}`);
     }
   }
 }

@@ -2,7 +2,7 @@ import { Request } from "express";
 import { Document, Types } from "mongoose";
 
 // ── User ──
-export type UserRole = "admin" | "manager" | "employee";
+export type UserRole = "admin" | "manager" | "employee" | "intern";
 export type UserStatus = "online" | "away" | "dnd";
 
 export interface IUser extends Document {
@@ -23,6 +23,34 @@ export interface IUser extends Document {
   createdAt: Date;
   updatedAt: Date;
   comparePassword(candidatePassword: string): Promise<boolean>;
+}
+
+// ── Intern ──
+export type InternStatus = "active" | "completed" | "terminated" | "converted";
+export type InternshipType = "full-time" | "part-time";
+
+export interface IInternProfile extends Document {
+  _id: Types.ObjectId;
+  userId: Types.ObjectId;
+  college?: string;
+  degree?: string;
+  courseYear?: string;
+  mentorId?: Types.ObjectId;
+  startDate?: string;
+  endDate?: string;
+  durationMonths?: number;
+  stipend?: number;
+  internshipType?: InternshipType;
+  status: InternStatus;
+  conversionDate?: string;
+  certificateIssued?: boolean;
+  certificateNo?: string;
+  certificateIssuedAt?: string;
+  certificateSentAt?: Date;
+  certificateSentTo?: string;
+  notes?: string;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 // ── Project ──

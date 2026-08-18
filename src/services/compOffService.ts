@@ -197,7 +197,7 @@ export class CompOffService {
     const filter: Record<string, unknown> = {};
     if (query.status) filter.status = query.status;
     const [data, total] = await Promise.all([
-      CompOff.find(filter).populate("userId", "name email department").sort("-createdAt").skip(skip).limit(limit),
+      CompOff.find(filter).populate("userId", "name email department role").sort("-createdAt").skip(skip).limit(limit),
       CompOff.countDocuments(filter),
     ]);
 

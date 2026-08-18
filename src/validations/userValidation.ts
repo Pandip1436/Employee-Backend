@@ -9,7 +9,7 @@ export const createUserSchema = z.object({
     .min(3, "User ID must be at least 3 characters")
     .regex(/^[a-zA-Z0-9._-]+$/, "User ID can only contain letters, numbers, dot, dash, underscore"),
   password: strongPassword,
-  role: z.enum(["admin", "manager", "employee"]).optional(),
+  role: z.enum(["admin", "manager", "employee", "intern"]).optional(),
   department: z.string().optional(),
 });
 
@@ -30,7 +30,7 @@ export const updateUserSchema = z.object({
     .min(3, "User ID must be at least 3 characters")
     .regex(/^[a-zA-Z0-9._-]+$/, "User ID can only contain letters, numbers, dot, dash, underscore")
     .optional(),
-  role: z.enum(["admin", "manager", "employee"]).optional(),
+  role: z.enum(["admin", "manager", "employee", "intern"]).optional(),
   department: z.string().optional(),
   isActive: z.boolean().optional(),
   inactiveReason: z

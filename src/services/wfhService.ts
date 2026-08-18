@@ -22,7 +22,7 @@ export class WfhService {
     const filter: Record<string, unknown> = {};
     if (query.status) filter.status = query.status;
     const [data, total] = await Promise.all([
-      WfhRequest.find(filter).populate("userId", "name email department").sort("-createdAt").skip(skip).limit(limit),
+      WfhRequest.find(filter).populate("userId", "name email department role").sort("-createdAt").skip(skip).limit(limit),
       WfhRequest.countDocuments(filter),
     ]);
 

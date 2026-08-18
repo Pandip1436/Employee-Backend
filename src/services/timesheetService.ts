@@ -42,7 +42,7 @@ export class TimesheetService {
 
     const [data, total] = await Promise.all([
       Timesheet.find(filter)
-        .populate("userId", "name email")
+        .populate("userId", "name email role")
         .populate("projectId", "name client")
         .populate("approvedBy", "name email")
         .sort(sort)
@@ -59,7 +59,7 @@ export class TimesheetService {
 
   static async getById(id: string): Promise<ITimesheet> {
     const timesheet = await Timesheet.findById(id)
-      .populate("userId", "name email")
+      .populate("userId", "name email role")
       .populate("projectId", "name client")
       .populate("approvedBy", "name email");
     if (!timesheet) throw new ApiError(404, "Timesheet entry not found.");

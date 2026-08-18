@@ -1,6 +1,7 @@
 import { Router } from "express";
 import authRoutes from "./authRoutes";
 import userRoutes from "./userRoutes";
+import internRoutes from "./internRoutes";
 import projectRoutes from "./projectRoutes";
 import timesheetRoutes from "./timesheetRoutes";
 import timerRoutes from "./timerRoutes";
@@ -28,6 +29,7 @@ const router = Router();
 
 router.use("/auth", authRoutes);
 router.use("/users", userRoutes);
+router.use("/interns", internRoutes);
 router.use("/projects", projectRoutes);
 router.use("/timesheets", timesheetRoutes);
 router.use("/timers", timerRoutes);

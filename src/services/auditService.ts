@@ -7,6 +7,7 @@ export type AuditModule =
   | "leave"
   | "documents"
   | "employees"
+  | "interns"
   | "approvals"
   | "settings"
   | "roles"

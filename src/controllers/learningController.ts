@@ -14,8 +14,8 @@ export class LearningController {
       const filter: Record<string, unknown> = { isActive: true };
       if (req.query.category) filter.category = req.query.category;
       if (req.query.skill) filter.skill = { $regex: req.query.skill, $options: "i" };
-      // Employees see only their own courses; managers/admins see all.
-      if (req.user!.role === "employee") filter.createdBy = req.user!._id;
+      // Employees and interns see only their own courses; managers/admins see all.
+      if (!["admin", "manager"].includes(req.user!.role)) filter.createdBy = req.user!._id;
       const courses = await Course.find(filter).populate("createdBy", "name").sort("-createdAt");
       res.json({ success: true, data: courses });
     } catch (e) { next(e); }
@@ -167,7 +167,7 @@ export class LearningController {
   static async getLearners(_req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const users = await User.find({ role: { $ne: "admin" }, isActive: true })
-        .select("name email department userId")
+        .select("name email department userId role")
         .sort("name")
         .lean();
 
@@ -213,6 +213,7 @@ export class LearningController {
           email: u.email,
           department: (u as any).department || "",
           userId: (u as any).userId || "",
+          role: (u as any).role || "",
           profilePhotoUrl: photoByUserId.get(String(u._id)),
           enrolledCount: data.enrolled.length,
           completedCount: data.completed.length,
